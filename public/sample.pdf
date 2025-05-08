@@ -1,0 +1,159 @@
+%PDF-1.4
+1 0 obj
+<<
+/Title (Sample PDF for Lexingo)
+/Author (Lexingo)
+/Creator (Lexingo Sample Creator)
+/Producer (Lexingo Sample Producer)
+/CreationDate (D:20230615120000+00'00')
+>>
+endobj
+2 0 obj
+<<
+/Type /Catalog
+/Pages 3 0 R
+>>
+endobj
+3 0 obj
+<<
+/Type /Pages
+/Kids [4 0 R 6 0 R]
+/Count 2
+>>
+endobj
+4 0 obj
+<<
+/Type /Page
+/Parent 3 0 R
+/Resources <<
+/Font <<
+/F1 5 0 R
+>>
+/ProcSet [/PDF /Text]
+>>
+/MediaBox [0 0 612 792]
+/Contents 8 0 R
+>>
+endobj
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+6 0 obj
+<<
+/Type /Page
+/Parent 3 0 R
+/Resources <<
+/Font <<
+/F1 5 0 R
+>>
+/ProcSet [/PDF /Text]
+>>
+/MediaBox [0 0 612 792]
+/Contents 9 0 R
+>>
+endobj
+8 0 obj
+<< /Length 676 >>
+stream
+BT
+/F1 24 Tf
+50 700 Td
+(Sample PDF for Lexingo) Tj
+ET
+BT
+/F1 12 Tf
+50 650 Td
+(This is a sample PDF file to demonstrate the Lexingo application.) Tj
+ET
+BT
+/F1 12 Tf
+50 630 Td
+(Lexingo is an interactive reading tool that allows you to learn) Tj
+ET
+BT
+/F1 12 Tf
+50 610 Td
+(Spanish while reading English books. Just click on any word to see) Tj
+ET
+BT
+/F1 12 Tf
+50 590 Td
+(its translation in Spanish.) Tj
+ET
+BT
+/F1 14 Tf
+50 540 Td
+(Common Words in English:) Tj
+ET
+BT
+/F1 12 Tf
+50 510 Td
+(hello, world, book, read, page, word, language, translate, english, spanish) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Length 676 >>
+stream
+BT
+/F1 14 Tf
+50 700 Td
+(Sample Text - Page 2) Tj
+ET
+BT
+/F1 12 Tf
+50 650 Td
+(Here are some more words and sentences for you to practice with:) Tj
+ET
+BT
+/F1 12 Tf
+50 620 Td
+(The quick brown fox jumps over the lazy dog.) Tj
+ET
+BT
+/F1 12 Tf
+50 590 Td
+(Learning a new language can be challenging but rewarding.) Tj
+ET
+BT
+/F1 12 Tf
+50 560 Td
+(Reading books is one of the best ways to improve vocabulary.) Tj
+ET
+BT
+/F1 12 Tf
+50 520 Td
+(Click on any word above to see its translation in Spanish.) Tj
+ET
+BT
+/F1 12 Tf
+50 490 Td
+(Thank you for using Lexingo!) Tj
+ET
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f
+0000000015 00000 n
+0000000164 00000 n
+0000000213 00000 n
+0000000274 00000 n
+0000000413 00000 n
+0000000480 00000 n
+0000000000 00000 f
+0000000619 00000 n
+0000001346 00000 n
+trailer
+<<
+/Size 10
+/Root 2 0 R
+/Info 1 0 R
+>>
+startxref
+2073
+%%EOF
