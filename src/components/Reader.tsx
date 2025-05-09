@@ -47,6 +47,7 @@ const Reader: React.FC<ReaderProps> = ({
   const [translationPosition, setTranslationPosition] = useState<'top' | 'bottom' | 'center'>('bottom');
   const [translationCoords, setTranslationCoords] = useState({ top: 0, left: 0 });
   const [isMobileView, setIsMobileView] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   
   const contentRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -58,6 +59,39 @@ const Reader: React.FC<ReaderProps> = ({
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     setShowApiKeyWarning(!apiKey);
   }, []);
+
+  // Detectar si es iOS
+  useEffect(() => {
+    const checkIOS = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !(window as any).MSStream;
+      setIsIOS(isIOS);
+    };
+    
+    checkIOS();
+  }, []);
+
+  // Ajuste adicional para iOS para manejar el viewport real
+  useEffect(() => {
+    if (!isIOS) return;
+    
+    // Función para ajustar la altura visible real en dispositivos iOS
+    const adjustIOSHeight = () => {
+      // Calcular la altura visual disponible real en iOS
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+    
+    // Ejecutar al montar y cuando cambie el tamaño
+    adjustIOSHeight();
+    window.addEventListener('resize', adjustIOSHeight);
+    window.addEventListener('orientationchange', adjustIOSHeight);
+    
+    return () => {
+      window.removeEventListener('resize', adjustIOSHeight);
+      window.removeEventListener('orientationchange', adjustIOSHeight);
+    };
+  }, [isIOS]);
 
   // Comprobar si hay un marcador guardado para este libro al cargar
   useEffect(() => {
@@ -150,9 +184,9 @@ const Reader: React.FC<ReaderProps> = ({
   const mobileBottomPadding = useMemo(() => {
     // Valores más altos para dispositivos más pequeños
     if (isMobileView) {
-      if (window.innerHeight < 600) return 160; // Extra padding para pantallas muy pequeñas
-      if (window.innerHeight < 700) return 140; // Padding grande para pantallas pequeñas (iPhone 13 Pro)
-      return 120; // Padding normal para móviles
+      if (window.innerHeight < 600) return 30; // Padding mínimo para pantallas muy pequeñas
+      if (window.innerHeight < 700) return 20; // Padding mínimo para iPhone 13 Pro
+      return 10; // Padding mínimo para móviles
     }
     return 0; // Sin padding adicional en desktop
   }, [isMobileView]);
@@ -527,7 +561,9 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Componente de barra inferior
   const BottomControlBar = () => (
-    <div className={`sticky bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 ${isMobileView ? 'py-2 min-h-[60px]' : 'py-1'} z-20`}>
+    <div className={`fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 ${isIOS ? 'py-4 ios-safe-bottom' : isMobileView ? 'py-3' : 'py-1'} z-30`} style={{
+      paddingBottom: isIOS ? 'env(safe-area-inset-bottom, 16px)' : undefined
+    }}>
       <div className="max-w-3xl mx-auto flex items-center justify-between px-2">
         {/* Sección de marcador y selección de párrafos */}
         <div className="flex items-center space-x-1">
@@ -615,10 +651,10 @@ const Reader: React.FC<ReaderProps> = ({
           <button
             onClick={decreaseFontSize}
             disabled={fontSize <= 12}
-            className="p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700"
+            className={`p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700 ${isMobileView ? 'scale-90' : ''}`}
             aria-label="Reducir tamaño de fuente"
           >
-            <Minus size={14} />
+            <Minus size={isMobileView ? 12 : 14} />
           </button>
           
           <span className="mx-1 text-xs font-medium text-gray-700 dark:text-gray-300">{fontSize}</span>
@@ -626,10 +662,10 @@ const Reader: React.FC<ReaderProps> = ({
           <button
             onClick={increaseFontSize}
             disabled={fontSize >= 24}
-            className="p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700"
+            className={`p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700 ${isMobileView ? 'scale-90' : ''}`}
             aria-label="Aumentar tamaño de fuente"
           >
-            <Plus size={14} />
+            <Plus size={isMobileView ? 12 : 14} />
           </button>
         </div>
       </div>
@@ -745,17 +781,29 @@ const Reader: React.FC<ReaderProps> = ({
         {/* Book content */}
         <div 
           ref={contentRef}
-          className={`reader-content px-4 py-4 mx-auto relative mb-4`}
+          className={`reader-content px-4 py-4 mx-auto relative ${isIOS ? 'mb-24' : isMobileView ? 'mb-16' : 'mb-4'}`}
           style={{ 
             fontSize: `${fontSize}px`,
             lineHeight: 1.6,
-            minHeight: isFullScreen ? 'calc(100vh - 140px)' : isMobileView ? 'calc(100vh - 200px)' : 'calc(100vh - 180px)',
-            maxHeight: isFullScreen ? 'calc(100vh - 140px)' : isMobileView ? 'calc(100vh - 200px)' : 'calc(100vh - 180px)',
+            minHeight: isFullScreen 
+              ? 'calc(100vh - 140px)' 
+              : isIOS 
+                ? 'calc((var(--vh, 1vh) * 100) - 280px)' 
+                : isMobileView 
+                  ? 'calc(100vh - 250px)' 
+                  : 'calc(100vh - 180px)',
+            maxHeight: isFullScreen 
+              ? 'calc(100vh - 140px)' 
+              : isIOS 
+                ? 'calc((var(--vh, 1vh) * 100) - 280px)' 
+                : isMobileView 
+                  ? 'calc(100vh - 250px)' 
+                  : 'calc(100vh - 180px)',
             overflowY: 'auto',
             userSelect: 'text',
             scrollbarWidth: 'thin',
             scrollbarColor: 'rgba(156, 163, 175, 0.4) transparent',
-            paddingBottom: mobileBottomPadding ? `${mobileBottomPadding}px` : undefined
+            paddingBottom: (isIOS || mobileBottomPadding) ? `${isIOS ? 60 : mobileBottomPadding}px` : undefined
           }}
         >
           <div className="text-justify max-w-3xl mx-auto">
