@@ -150,9 +150,9 @@ const Reader: React.FC<ReaderProps> = ({
   const mobileBottomPadding = useMemo(() => {
     // Valores más altos para dispositivos más pequeños
     if (isMobileView) {
-      if (window.innerHeight < 600) return 120; // Extra padding para pantallas muy pequeñas
-      if (window.innerHeight < 700) return 100; // Padding grande para pantallas pequeñas
-      return 80; // Padding normal para móviles
+      if (window.innerHeight < 600) return 160; // Extra padding para pantallas muy pequeñas
+      if (window.innerHeight < 700) return 140; // Padding grande para pantallas pequeñas (iPhone 13 Pro)
+      return 120; // Padding normal para móviles
     }
     return 0; // Sin padding adicional en desktop
   }, [isMobileView]);
@@ -527,19 +527,19 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Componente de barra inferior
   const BottomControlBar = () => (
-    <div className="sticky bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 py-1 z-20">
+    <div className={`sticky bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 ${isMobileView ? 'py-2 min-h-[60px]' : 'py-1'} z-20`}>
       <div className="max-w-3xl mx-auto flex items-center justify-between px-2">
         {/* Sección de marcador y selección de párrafos */}
         <div className="flex items-center space-x-1">
           <button
             onClick={saveReadingPosition}
-            className="p-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
+            className={`p-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center ${isMobileView ? 'p-2' : 'p-1'}`}
             title="Guardar marcador"
           >
             {hasBookmark ? (
-              <BookmarkCheck size={16} />
+              <BookmarkCheck size={isMobileView ? 20 : 16} />
             ) : (
-              <Bookmark size={16} />
+              <Bookmark size={isMobileView ? 20 : 16} />
             )}
           </button>
           
@@ -592,21 +592,21 @@ const Reader: React.FC<ReaderProps> = ({
           <button
             onClick={handlePreviousPage}
             disabled={book.currentPage <= 1}
-            className="p-1 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            className={`${isMobileView ? 'p-2' : 'p-1'} text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={isMobileView ? 20 : 16} />
           </button>
           
-          <span className="mx-1 text-xs text-gray-700 dark:text-gray-300 font-medium">
+          <span className={`mx-1 ${isMobileView ? 'text-sm' : 'text-xs'} text-gray-700 dark:text-gray-300 font-medium`}>
             {book.currentPage}/{book.totalPages}
           </span>
           
           <button
             onClick={handleNextPage}
             disabled={book.currentPage >= book.totalPages}
-            className="p-1 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            className={`${isMobileView ? 'p-2' : 'p-1'} text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
           >
-            <ArrowRight size={16} />
+            <ArrowRight size={isMobileView ? 20 : 16} />
           </button>
         </div>
         
@@ -749,8 +749,8 @@ const Reader: React.FC<ReaderProps> = ({
           style={{ 
             fontSize: `${fontSize}px`,
             lineHeight: 1.6,
-            minHeight: isFullScreen ? 'calc(100vh - 140px)' : 'calc(100vh - 180px)',
-            maxHeight: isFullScreen ? 'calc(100vh - 140px)' : 'calc(100vh - 180px)',
+            minHeight: isFullScreen ? 'calc(100vh - 140px)' : isMobileView ? 'calc(100vh - 200px)' : 'calc(100vh - 180px)',
+            maxHeight: isFullScreen ? 'calc(100vh - 140px)' : isMobileView ? 'calc(100vh - 200px)' : 'calc(100vh - 180px)',
             overflowY: 'auto',
             userSelect: 'text',
             scrollbarWidth: 'thin',
