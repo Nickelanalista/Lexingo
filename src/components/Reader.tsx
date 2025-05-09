@@ -514,45 +514,45 @@ const Reader: React.FC<ReaderProps> = ({
   
   // Componente Header para reutilizar en ambos modos
   const ReaderHeader = () => (
-    <header className="flex items-center justify-between py-1 px-2 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm">
-      <div className="max-w-3xl w-full mx-auto flex items-center justify-between px-2">
+    <header className="flex items-center justify-between py-3 px-2 border-b border-gray-300 dark:border-gray-700 sticky top-0 z-20 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm shadow-sm">
+      <div className="max-w-3xl w-full mx-auto flex items-center justify-between px-3">
         {/* Sección de inicio */}
         <div className="flex items-center">
           <button
             onClick={isFullScreen ? onExitFullScreen : () => { setBook(null); }}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="p-2 rounded-md text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
             aria-label={isFullScreen ? "Volver a modo normal" : "Volver al inicio"}
             title={isFullScreen ? "Volver a modo normal" : "Volver al inicio"}
           >
-            {isFullScreen ? <ArrowLeft size={16} /> : <Home size={16} />}
+            {isFullScreen ? <ArrowLeft size={18} /> : <Home size={18} />}
           </button>
         </div>
         
         {/* Título y página */}
         <div className="text-center flex-grow mx-2">
           <div className="flex items-center justify-center">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
               {book.currentPage} / {book.totalPages}
             </span>
           </div>
         </div>
         
         {/* Controles de tema y pantalla */}
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-2">
           <button
             onClick={toggleTheme}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="p-2 rounded-md text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
             aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
           >
-            {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
           
           <button
             onClick={isFullScreen ? onExitFullScreen : onFullScreenMode}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="p-2 rounded-md text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
             aria-label={isFullScreen ? "Salir de pantalla completa" : "Pantalla completa"}
           >
-            {isFullScreen ? <XCircle size={16} /> : <Maximize size={16} />}
+            {isFullScreen ? <XCircle size={18} /> : <Maximize size={18} />}
           </button>
         </div>
       </div>
@@ -561,21 +561,21 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Componente de barra inferior
   const BottomControlBar = () => (
-    <div className={`fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 ${isIOS ? 'py-4 ios-safe-bottom' : isMobileView ? 'py-3' : 'py-1'} z-30`} style={{
+    <div className={`fixed bottom-0 left-0 right-0 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm border-t border-gray-300 dark:border-gray-700 ${isIOS ? 'py-4 ios-safe-bottom' : isMobileView ? 'py-3' : 'py-2'} z-30 shadow-[0_-2px_5px_rgba(0,0,0,0.05)] dark:shadow-[0_-2px_5px_rgba(0,0,0,0.2)]`} style={{
       paddingBottom: isIOS ? 'env(safe-area-inset-bottom, 16px)' : undefined
     }}>
-      <div className="max-w-3xl mx-auto flex items-center justify-between px-2">
+      <div className="max-w-3xl mx-auto flex items-center justify-between px-3 h-full">
         {/* Sección de marcador y selección de párrafos */}
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center justify-center space-x-2 flex-1">
           <button
             onClick={saveReadingPosition}
-            className={`p-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center ${isMobileView ? 'p-2' : 'p-1'}`}
+            className={`p-2 rounded-md text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-center`}
             title="Guardar marcador"
           >
             {hasBookmark ? (
-              <BookmarkCheck size={isMobileView ? 20 : 16} />
+              <BookmarkCheck size={20} className="flex-shrink-0" />
             ) : (
-              <Bookmark size={isMobileView ? 20 : 16} />
+              <Bookmark size={20} className="flex-shrink-0" />
             )}
           </button>
           
@@ -583,40 +583,40 @@ const Reader: React.FC<ReaderProps> = ({
           {selectionMode === 'inactive' ? (
             <button
               onClick={startParagraphSelection}
-              className="p-1 text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1"
+              className="p-2 rounded-md text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-center gap-1"
               title="Traducir párrafo"
             >
-              <Languages size={16} />
-              <span className="text-xs font-medium hidden sm:inline">Traducir</span>
+              <Languages size={20} className="flex-shrink-0" />
+              <span className="text-sm font-medium hidden sm:inline">Traducir</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center justify-center gap-2">
               {selectionMode === 'selected' ? (
                 <>
                   <button
                     onClick={translateSelectedParagraph}
-                    className="p-1 rounded-md bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
+                    className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center gap-1"
                     title="Traducir selección"
                   >
-                    <Check size={14} />
-                    <span className="text-xs font-medium">Traducir</span>
+                    <Check size={18} className="flex-shrink-0" />
+                    <span className="text-sm font-medium">Traducir</span>
                   </button>
                   <button
                     onClick={cancelParagraphSelection}
-                    className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    className="p-2 rounded-md text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"
                     title="Cancelar selección"
                   >
-                    <X size={14} />
+                    <X size={18} className="flex-shrink-0" />
                   </button>
                 </>
               ) : (
                 <button
                   onClick={cancelParagraphSelection}
-                  className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1"
+                  className="p-2 rounded-md text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center gap-1"
                   title="Cancelar selección"
                 >
-                  <X size={14} />
-                  <span className="text-xs font-medium">Cancelar</span>
+                  <X size={18} className="flex-shrink-0" />
+                  <span className="text-sm font-medium">Cancelar</span>
                 </button>
               )}
             </div>
@@ -624,48 +624,48 @@ const Reader: React.FC<ReaderProps> = ({
         </div>
         
         {/* Sección de navegación */}
-        <div className="flex items-center">
+        <div className="flex items-center justify-center flex-1">
           <button
             onClick={handlePreviousPage}
             disabled={book.currentPage <= 1}
-            className={`${isMobileView ? 'p-2' : 'p-1'} text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+            className={`p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center`}
           >
-            <ArrowLeft size={isMobileView ? 20 : 16} />
+            <ArrowLeft size={20} className="flex-shrink-0" />
           </button>
           
-          <span className={`mx-1 ${isMobileView ? 'text-sm' : 'text-xs'} text-gray-700 dark:text-gray-300 font-medium`}>
+          <span className={`mx-2 text-sm font-medium text-gray-700 dark:text-gray-300 inline-flex items-center justify-center`}>
             {book.currentPage}/{book.totalPages}
           </span>
           
           <button
             onClick={handleNextPage}
             disabled={book.currentPage >= book.totalPages}
-            className={`${isMobileView ? 'p-2' : 'p-1'} text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+            className={`p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center`}
           >
-            <ArrowRight size={isMobileView ? 20 : 16} />
+            <ArrowRight size={20} className="flex-shrink-0" />
           </button>
         </div>
         
         {/* Sección de zoom */}
-        <div className="flex items-center">
+        <div className="flex items-center justify-center flex-1">
           <button
             onClick={decreaseFontSize}
             disabled={fontSize <= 12}
-            className={`p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700 ${isMobileView ? 'scale-90' : ''}`}
+            className={`p-2 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700`}
             aria-label="Reducir tamaño de fuente"
           >
-            <Minus size={isMobileView ? 12 : 14} />
+            <Minus size={16} className="flex-shrink-0" />
           </button>
           
-          <span className="mx-1 text-xs font-medium text-gray-700 dark:text-gray-300">{fontSize}</span>
+          <span className="mx-2 text-sm font-medium text-gray-700 dark:text-gray-300 inline-flex items-center justify-center">{fontSize}</span>
           
           <button
             onClick={increaseFontSize}
             disabled={fontSize >= 24}
-            className={`p-1 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700 ${isMobileView ? 'scale-90' : ''}`}
+            className={`p-2 rounded-full flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-gray-200 dark:disabled:hover:bg-gray-700`}
             aria-label="Aumentar tamaño de fuente"
           >
-            <Plus size={isMobileView ? 12 : 14} />
+            <Plus size={16} className="flex-shrink-0" />
           </button>
         </div>
       </div>
@@ -781,29 +781,29 @@ const Reader: React.FC<ReaderProps> = ({
         {/* Book content */}
         <div 
           ref={contentRef}
-          className={`reader-content px-4 py-4 mx-auto relative ${isIOS ? 'mb-24' : isMobileView ? 'mb-16' : 'mb-4'}`}
+          className={`reader-content px-4 py-2 mx-auto relative ${isIOS ? 'mb-16' : isMobileView ? 'mb-12' : 'mb-4'}`}
           style={{ 
             fontSize: `${fontSize}px`,
             lineHeight: 1.6,
             minHeight: isFullScreen 
               ? 'calc(100vh - 140px)' 
               : isIOS 
-                ? 'calc((var(--vh, 1vh) * 100) - 280px)' 
+                ? 'calc((var(--vh, 1vh) * 100) - 200px)' 
                 : isMobileView 
-                  ? 'calc(100vh - 250px)' 
-                  : 'calc(100vh - 180px)',
+                  ? 'calc(100vh - 180px)' 
+                  : 'calc(100vh - 160px)',
             maxHeight: isFullScreen 
               ? 'calc(100vh - 140px)' 
               : isIOS 
-                ? 'calc((var(--vh, 1vh) * 100) - 280px)' 
+                ? 'calc((var(--vh, 1vh) * 100) - 200px)' 
                 : isMobileView 
-                  ? 'calc(100vh - 250px)' 
-                  : 'calc(100vh - 180px)',
+                  ? 'calc(100vh - 180px)' 
+                  : 'calc(100vh - 160px)',
             overflowY: 'auto',
             userSelect: 'text',
             scrollbarWidth: 'thin',
             scrollbarColor: 'rgba(156, 163, 175, 0.4) transparent',
-            paddingBottom: (isIOS || mobileBottomPadding) ? `${isIOS ? 60 : mobileBottomPadding}px` : undefined
+            paddingBottom: (isIOS || mobileBottomPadding) ? `${isIOS ? 30 : mobileBottomPadding}px` : undefined
           }}
         >
           <div className="text-justify max-w-3xl mx-auto">
