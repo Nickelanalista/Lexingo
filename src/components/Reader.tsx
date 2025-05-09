@@ -146,6 +146,17 @@ const Reader: React.FC<ReaderProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Calcular el padding-bottom para dispositivos móviles
+  const mobileBottomPadding = useMemo(() => {
+    // Valores más altos para dispositivos más pequeños
+    if (isMobileView) {
+      if (window.innerHeight < 600) return 120; // Extra padding para pantallas muy pequeñas
+      if (window.innerHeight < 700) return 100; // Padding grande para pantallas pequeñas
+      return 80; // Padding normal para móviles
+    }
+    return 0; // Sin padding adicional en desktop
+  }, [isMobileView]);
+
   // Determinar posición del panel de traducción
   useEffect(() => {
     if (selectionMode === 'selected' && startWordIndex && endWordIndex) {
@@ -743,7 +754,8 @@ const Reader: React.FC<ReaderProps> = ({
             overflowY: 'auto',
             userSelect: 'text',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(156, 163, 175, 0.4) transparent'
+            scrollbarColor: 'rgba(156, 163, 175, 0.4) transparent',
+            paddingBottom: mobileBottomPadding ? `${mobileBottomPadding}px` : undefined
           }}
         >
           <div className="text-justify max-w-3xl mx-auto">
