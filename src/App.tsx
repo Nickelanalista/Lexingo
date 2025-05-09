@@ -1,46 +1,74 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { BookProvider, useBookContext } from './context/BookContext';
 import { ThemeProvider } from './context/ThemeContext';
 import NavigationBar from './components/NavigationBar';
 import FileUploader from './components/PDFUploader';
 import Reader from './components/Reader';
 
+// Enrutador simple para manejar las vistas
 const AppContent: React.FC = () => {
   const { book } = useBookContext();
+  const [view, setView] = useState<'home' | 'reader' | 'fullscreen'>('home');
+  
+  // Si hay un libro cargado y no estamos en ninguna vista específica, mostrar el lector normal
+  React.useEffect(() => {
+    if (book && view === 'home') {
+      setView('reader');
+    }
+  }, [book]);
+  
+  // Cambiar a vista de pantalla completa
+  const goToFullScreen = () => {
+    setView('fullscreen');
+  };
+  
+  // Volver a la vista normal del lector
+  const goToReader = useCallback(() => {
+    setView('reader');
+  }, []);
+  
+  // Volver a la página principal
+  const goToHome = useCallback(() => {
+    setView('home');
+  }, []);
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <NavigationBar />
+      {view !== 'fullscreen' && <NavigationBar />}
       
       <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {book ? (
-            <Reader />
+        <div className={`mx-auto ${view === 'fullscreen' ? 'w-full px-0' : 'max-w-7xl px-4 sm:px-6 lg:px-8'} py-6`}>
+          {book && (view === 'reader' || view === 'fullscreen') ? (
+            <div>
+              <Reader 
+                onFullScreenMode={goToFullScreen} 
+                onExitFullScreen={goToReader} 
+                isFullScreen={view === 'fullscreen'} 
+              />
+            </div>
           ) : (
-            <div className="py-8">
-              <div className="text-center mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+            <div className="flex flex-col items-center h-screen">
+              <div className="text-center mb-0 mt-10 pt-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 bg-gradient-to-r from-blue-500 to-indigo-600 bg-clip-text text-transparent">
                   Bienvenido a Lexingo
                 </h1>
-                <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                  Sube un libro en PDF, TXT, DOCX u otros formatos y toca cualquier palabra para ver su traducción al español.
-                  ¡Perfecto para estudiantes de idiomas!
-                </p>
+                <div className="max-w-[280px] mx-auto">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Tu asistente de lectura con traducción instantánea
+                  </p>
+                  <p className="text-2xs text-gray-500 dark:text-gray-400 max-w-xs mx-auto mb-2">
+                    Traduce palabras o párrafos con un solo clic.
+                  </p>
+                </div>
               </div>
-              
-              <FileUploader onFileProcessed={() => {}} />
+
+              <div className="w-full max-w-[280px] mx-auto transform scale-90 mt-8">
+                <FileUploader onFileProcessed={() => setView('reader')} />
+              </div>
             </div>
           )}
         </div>
       </main>
-      
-      <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-            Lexingo - Herramienta de Lectura Interactiva © {new Date().getFullYear()}
-          </p>
-        </div>
-      </footer>
     </div>
   );
 };

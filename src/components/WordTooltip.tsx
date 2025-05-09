@@ -1,17 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useFloating, offset, flip, shift, arrow, autoUpdate } from '@floating-ui/react';
 import { useTranslator } from '../hooks/useTranslator';
-import { TranslationResult } from '../types';
+import { TranslationResult, WordTooltipProps } from '../types';
 import { Loader2, X, Volume2, VolumeX } from 'lucide-react';
 import TTSService from '../services/tts';
-
-interface WordTooltipProps {
-  word: string;
-  isOpen: boolean;
-  onClose: () => void;
-  referenceElement: HTMLElement | null;
-  showBothLanguages?: boolean;
-}
 
 const WordTooltip: React.FC<WordTooltipProps> = ({ 
   word, 
@@ -22,6 +14,7 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
 }) => {
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
   const arrowRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const { translateWord, simulateTranslation, isTranslating, error } = useTranslator();
   const [isPlayingAudio, setIsPlayingAudio] = useState<'en' | 'es' | null>(null);
   
@@ -39,6 +32,39 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
     ],
     whileElementsMounted: autoUpdate
   });
+
+  // Conectar la referencia del tooltip con la referencia del floating-ui
+  const setFloating = (node: HTMLDivElement | null) => {
+    refs.setFloating(node);
+    if (node) tooltipRef.current = node;
+  };
+
+  // Manejar clic fuera del tooltip
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      // No cerrar si hace clic en la palabra de referencia
+      if (referenceElement && referenceElement.contains(event.target as Node)) {
+        return;
+      }
+      
+      // Cerrar si hace clic fuera del tooltip
+      if (tooltipRef.current && !tooltipRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Agregar event listener con un pequeño retraso para evitar que se cierre inmediatamente al abrir
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose, referenceElement]);
 
   useEffect(() => {
     if (isOpen && word) {
@@ -90,7 +116,7 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
 
   return (
     <div
-      ref={refs.setFloating}
+      ref={setFloating}
       style={floatingStyles}
       className="z-50 px-3 py-2 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 w-auto min-w-48 max-w-lg animate-fadeIn"
     >
@@ -155,12 +181,12 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
                   {isPlayingAudio === 'en' ? (
                     <>
                       <VolumeX size={14} className="mr-1 text-red-500" />
-                      <span>Detener</span>
+                      <span className="dark:text-white">Detener</span>
                     </>
                   ) : (
                     <>
                       <Volume2 size={14} className="mr-1 text-gray-600 dark:text-gray-300" />
-                      <span>Inglés</span>
+                      <span className="dark:text-white">Inglés</span>
                     </>
                   )}
                 </button>
@@ -173,12 +199,12 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
                   {isPlayingAudio === 'es' ? (
                     <>
                       <VolumeX size={14} className="mr-1 text-red-500" />
-                      <span>Detener</span>
+                      <span className="dark:text-white">Detener</span>
                     </>
                   ) : (
                     <>
                       <Volume2 size={14} className="mr-1 text-blue-600 dark:text-blue-400" />
-                      <span>Español</span>
+                      <span className="dark:text-white">Español</span>
                     </>
                   )}
                 </button>

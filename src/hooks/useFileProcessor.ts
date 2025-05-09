@@ -41,11 +41,33 @@ export const useFileProcessor = () => {
         });
       }
       
+      // Detectar la primera página con contenido significativo
+      let firstContentfulPage = 1;
+      const minContentLength = 100; // Mínimo número de caracteres para considerar una página como "con contenido"
+      let emptyPagesSkipped = 0;
+      
+      for (let i = 0; i < pages.length; i++) {
+        // Eliminar espacios en blanco para verificar si hay contenido real
+        const contentWithoutSpaces = pages[i].content.replace(/\s+/g, '');
+        if (contentWithoutSpaces.length >= minContentLength) {
+          firstContentfulPage = i + 1; // +1 porque los índices comienzan en 0, pero las páginas en 1
+          emptyPagesSkipped = i;
+          break;
+        }
+      }
+      
+      // Si saltamos más de 0 páginas, añadir una nota en la primera página con contenido
+      if (emptyPagesSkipped > 0 && firstContentfulPage <= pages.length) {
+        const originalContent = pages[firstContentfulPage - 1].content;
+        pages[firstContentfulPage - 1].content = 
+          `[Se omitieron ${emptyPagesSkipped} ${emptyPagesSkipped === 1 ? 'página inicial' : 'páginas iniciales'} sin contenido relevante]\n\n${originalContent}`;
+      }
+      
       // Create book object
       const book: Book = {
         title: file.name.replace(/\.[^.]+$/i, ''),
         pages,
-        currentPage: 1,
+        currentPage: firstContentfulPage, // Comenzar en la primera página con contenido
         totalPages,
       };
       

@@ -40,3 +40,11 @@ export interface OpenAIResponse {
     total_tokens: number;
   };
 }
+
+export interface WordTooltipProps {
+  word: string;
+  isOpen: boolean;
+  onClose: () => void;
+  referenceElement: HTMLElement | null;
+  showBothLanguages?: boolean;
+}

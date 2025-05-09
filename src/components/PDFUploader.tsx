@@ -44,10 +44,10 @@ const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
   const supportedFormatsText = 'PDF, TXT, DOCX, DOC, RTF, MD, HTML';
 
   return (
-    <div className="w-full max-w-xl mx-auto py-12 px-4">
+    <div className="w-full mx-auto py-1">
       <div 
         className={`
-          w-full p-8 rounded-xl border-2 border-dashed transition-all duration-200
+          w-full p-4 rounded-lg border-2 border-dashed transition-all duration-200
           flex flex-col items-center justify-center text-center
           ${isDragActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-700'}
           ${isDragReject ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : ''}
@@ -58,44 +58,38 @@ const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
       >
         <input {...getInputProps()} disabled={isLoading} />
         
-        <div className="mb-4">
+        <div className="mb-2">
           {isLoading ? (
-            <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full"></div>
           ) : (
             isDragReject ? (
-              <div className="w-16 h-16 flex items-center justify-center rounded-full bg-red-100 text-red-500 dark:bg-red-900/30">
-                <FileText size={32} />
+              <div className="w-10 h-10 flex items-center justify-center rounded-full bg-red-100 text-red-500 dark:bg-red-900/30">
+                <FileText size={20} />
               </div>
             ) : (
-              <div className="w-16 h-16 flex items-center justify-center rounded-full bg-blue-100 text-blue-500 dark:bg-blue-900/30">
-                <Upload size={32} />
+              <div className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-100 text-blue-500 dark:bg-blue-900/30">
+                <Upload size={20} />
               </div>
             )
           )}
         </div>
         
-        <h3 className="text-lg font-medium mb-2 dark:text-white">
+        <h3 className="text-sm font-medium mb-1 dark:text-white">
           {isLoading ? 'Procesando archivo...' : 'Sube tu libro'}
         </h3>
         
-        <p className="mb-4 text-gray-600 dark:text-gray-300">
+        <p className="mb-2 text-xs text-gray-600 dark:text-gray-300">
           {isDragActive 
             ? 'Suelta el archivo aquí...' 
             : isDragReject 
               ? `Solo se aceptan archivos ${supportedFormatsText}`
-              : `Arrastra y suelta un archivo (${supportedFormatsText}), o haz clic para seleccionar`}
+              : `Arrastra y suelta un archivo (${supportedFormatsText}), o haz clic`}
         </p>
         
         {error && (
-          <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+          <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-xs">
             {error}
           </div>
-        )}
-        
-        {!isLoading && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Tu archivo será procesado localmente - no se subirá a ningún servidor.
-          </p>
         )}
       </div>
     </div>
