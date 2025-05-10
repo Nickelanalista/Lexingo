@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Book } from 'lucide-react';
+import { Book, Sparkles, Brain, Zap, Languages, BookOpen } from 'lucide-react';
 import AuthModal from './AuthModal';
 
 export default function LandingPage() {
@@ -12,19 +12,19 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-gray-900 text-white overflow-x-hidden">
       {/* Navigation */}
-      <nav className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800">
+      <nav className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
-              <Book className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-              <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">Lexingo</span>
+              <Book className="h-8 w-8 text-purple-500" />
+              <span className="ml-2 text-xl font-bold">Lexingo</span>
             </div>
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => openAuthModal('login')}
-                className="px-4 py-2 rounded-md bg-gradient-to-r from-purple-600 to-blue-500 text-white hover:from-purple-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                className="px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors"
               >
                 Acceder
               </button>
@@ -34,29 +34,39 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-gray-900 dark:text-white">
-              <span className="block">Tu asistente de lectura</span>
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500">
+      <div className="relative">
+        {/* Background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 to-gray-900/20 pointer-events-none" />
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-32">
+          <div className="text-center relative z-10">
+            <div className="inline-flex items-center px-4 py-2 rounded-full bg-purple-900/30 border border-purple-700/30 mb-8">
+              <Sparkles className="h-4 w-4 text-purple-400 mr-2" />
+              <span className="text-sm text-purple-300">Potenciado por Inteligencia Artificial</span>
+            </div>
+            
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mb-6">
+              <span className="block text-white mb-2">Tu asistente de lectura</span>
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
                 con traducción instantánea
               </span>
             </h1>
-            <p className="mt-3 max-w-md mx-auto text-base text-gray-500 dark:text-gray-400 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
-              Mejora tu comprensión lectora en inglés con traducción en tiempo real. 
+            
+            <p className="mt-3 max-w-md mx-auto text-lg text-gray-300 sm:text-xl md:mt-5 md:max-w-3xl">
+              Mejora tu comprensión lectora en inglés con traducción en tiempo real impulsada por IA.
               Sube tus documentos y comienza a leer de forma interactiva.
             </p>
+
             <div className="mt-10 flex justify-center gap-4">
               <button
                 onClick={() => openAuthModal('register')}
-                className="px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 md:py-4 md:text-lg md:px-10"
+                className="px-8 py-3 text-base font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 md:py-4 md:text-lg md:px-10 transform transition-all hover:scale-105"
               >
                 Comenzar gratis
               </button>
               <button
                 onClick={() => openAuthModal('login')}
-                className="px-8 py-3 border border-gray-300 dark:border-gray-700 text-base font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 md:py-4 md:text-lg md:px-10"
+                className="px-8 py-3 border border-gray-700 text-base font-medium rounded-md text-gray-300 bg-gray-900 hover:bg-gray-800 md:py-4 md:text-lg md:px-10"
               >
                 Ya tengo cuenta
               </button>
@@ -66,73 +76,64 @@ export default function LandingPage() {
       </div>
 
       {/* Features Section */}
-      <div className="py-24 bg-gray-50 dark:bg-gray-800/50">
+      <div className="py-24 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl">
-              Características principales
+            <h2 className="text-3xl font-extrabold sm:text-4xl bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Tecnología avanzada de IA
             </h2>
-            <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-500 dark:text-gray-400">
-              Todo lo que necesitas para mejorar tu lectura en inglés
+            <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-400">
+              Experimenta una nueva forma de leer con tecnología de vanguardia
             </p>
           </div>
 
           <div className="mt-20">
-            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-12 sm:grid-cols-2 lg:grid-cols-3">
               {/* Feature 1 */}
-              <div className="pt-6">
-                <div className="flow-root bg-white dark:bg-gray-900 rounded-lg px-6 pb-8">
-                  <div className="-mt-6">
-                    <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-gradient-to-r from-purple-600 to-blue-500 rounded-md shadow-lg">
-                        <Book className="h-6 w-6 text-white" />
-                      </span>
-                    </div>
-                    <h3 className="mt-8 text-lg font-medium text-gray-900 dark:text-white tracking-tight">
-                      Traducción instantánea
-                    </h3>
-                    <p className="mt-5 text-base text-gray-500 dark:text-gray-400">
-                      Traduce palabras y frases con un solo clic mientras lees
-                    </p>
+              <div className="relative group">
+                <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 opacity-25 group-hover:opacity-50 transition-opacity blur" />
+                <div className="relative p-8 bg-gray-900 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-center w-12 h-12 bg-purple-900/30 rounded-lg mb-4">
+                    <Brain className="h-6 w-6 text-purple-400" />
                   </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Traducción con IA
+                  </h3>
+                  <p className="text-gray-400">
+                    Traducciones precisas y contextuales usando modelos avanzados de lenguaje
+                  </p>
                 </div>
               </div>
 
               {/* Feature 2 */}
-              <div className="pt-6">
-                <div className="flow-root bg-white dark:bg-gray-900 rounded-lg px-6 pb-8">
-                  <div className="-mt-6">
-                    <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-gradient-to-r from-purple-600 to-blue-500 rounded-md shadow-lg">
-                        <Book className="h-6 w-6 text-white" />
-                      </span>
-                    </div>
-                    <h3 className="mt-8 text-lg font-medium text-gray-900 dark:text-white tracking-tight">
-                      Múltiples formatos
-                    </h3>
-                    <p className="mt-5 text-base text-gray-500 dark:text-gray-400">
-                      Soporta PDF, TXT, DOCX y más formatos de documentos
-                    </p>
+              <div className="relative group">
+                <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 opacity-25 group-hover:opacity-50 transition-opacity blur" />
+                <div className="relative p-8 bg-gray-900 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-center w-12 h-12 bg-purple-900/30 rounded-lg mb-4">
+                    <Zap className="h-6 w-6 text-purple-400" />
                   </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Respuesta instantánea
+                  </h3>
+                  <p className="text-gray-400">
+                    Traducciones en tiempo real con solo hacer clic en cualquier palabra
+                  </p>
                 </div>
               </div>
 
               {/* Feature 3 */}
-              <div className="pt-6">
-                <div className="flow-root bg-white dark:bg-gray-900 rounded-lg px-6 pb-8">
-                  <div className="-mt-6">
-                    <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-gradient-to-r from-purple-600 to-blue-500 rounded-md shadow-lg">
-                        <Book className="h-6 w-6 text-white" />
-                      </span>
-                    </div>
-                    <h3 className="mt-8 text-lg font-medium text-gray-900 dark:text-white tracking-tight">
-                      Modo lectura
-                    </h3>
-                    <p className="mt-5 text-base text-gray-500 dark:text-gray-400">
-                      Interfaz optimizada para una lectura cómoda y sin distracciones
-                    </p>
+              <div className="relative group">
+                <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 opacity-25 group-hover:opacity-50 transition-opacity blur" />
+                <div className="relative p-8 bg-gray-900 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-center w-12 h-12 bg-purple-900/30 rounded-lg mb-4">
+                    <Languages className="h-6 w-6 text-purple-400" />
                   </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Comprensión mejorada
+                  </h3>
+                  <p className="text-gray-400">
+                    Mejora tu vocabulario y comprensión con ayuda de la IA
+                  </p>
                 </div>
               </div>
             </div>
