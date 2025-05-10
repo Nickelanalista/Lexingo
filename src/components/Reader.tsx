@@ -4,7 +4,7 @@ import { useThemeContext } from '../context/ThemeContext';
 import { useTranslator } from '../hooks/useTranslator';
 import { Word } from '../types';
 import WordTooltip from './WordTooltip';
-import { XCircle, Maximize, Sun, Moon, Plus, Minus, Home, Bookmark, BookmarkCheck, ArrowLeft, ArrowRight, Languages, TextSelect, X, Type, Check } from 'lucide-react';
+import { XCircle, Maximize, Sun, Moon, Plus, Minus, Home, Bookmark, BookmarkCheck, ArrowLeft, ArrowRight, Languages, TextSelect, X, Type, Check, Book } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ReaderProps {
