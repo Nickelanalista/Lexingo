@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BookProvider } from './context/BookContext';
+import { BookProvider, useBookContext } from './context/BookContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
 import NavigationBar from './components/NavigationBar';
