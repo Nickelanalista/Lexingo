@@ -35,12 +35,21 @@ export default function HomePage() {
 
   const handleOpenBook = async (book) => {
     try {
+      // Parse book content safely
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(book.content);
+      } catch (e) {
+        console.error('Error parsing book content:', e);
+        parsedContent = [];
+      }
+
       // Create book object for the context
       const bookData = {
         title: book.title,
-        pages: JSON.parse(book.content),
-        currentPage: book.current_page,
-        totalPages: book.total_pages,
+        pages: parsedContent,
+        currentPage: book.current_page || 1,
+        totalPages: book.total_pages || parsedContent.length,
         coverUrl: book.cover_url,
         lastRead: book.last_read
       };
@@ -56,7 +65,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-auto">
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
         {/* Welcome Section */}
         <div className="text-center">
@@ -95,10 +104,10 @@ export default function HomePage() {
           ) : recentBooks.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {recentBooks.slice(0, 6).map((book) => (
-                <div
+                <button
                   key={book.id}
                   onClick={() => handleOpenBook(book)}
-                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden group"
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden group text-left w-full"
                 >
                   <div className="aspect-[4/3] relative overflow-hidden">
                     {book.cover_url ? (
@@ -136,7 +145,7 @@ export default function HomePage() {
                       Última lectura: {new Date(book.last_read).toLocaleDateString()}
                     </p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (

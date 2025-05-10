@@ -36,10 +36,10 @@ function App() {
     <Router>
       <ThemeProvider>
         <BookProvider>
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <NavigationBar />
             
-            <main className="flex-1">
+            <main className="w-full">
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/books" element={<BooksPage />} />
