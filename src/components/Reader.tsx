@@ -13,6 +13,8 @@ interface ReaderProps {
   isFullScreen?: boolean;
 }
 
+type SelectionMode = 'inactive' | 'selectingStart' | 'selectingEnd' | 'selected';
+
 const Reader: React.FC<ReaderProps> = ({ 
   onFullScreenMode, 
   onExitFullScreen,
@@ -37,7 +39,7 @@ const Reader: React.FC<ReaderProps> = ({
   const [isParagraphTranslationOpen, setIsParagraphTranslationOpen] = useState(false);
   const [translatedParagraph, setTranslatedParagraph] = useState<string>('');
   const [isTranslatingParagraph, setIsTranslatingParagraph] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<'inactive' | 'selectingStart' | 'selectingEnd' | 'selected'>('inactive');
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('inactive');
   const [startWordIndex, setStartWordIndex] = useState<{paraIdx: number, wordIdx: number} | null>(null);
   const [endWordIndex, setEndWordIndex] = useState<{paraIdx: number, wordIdx: number} | null>(null);
   const [selectedParagraph, setSelectedParagraph] = useState<string>('');
@@ -130,8 +132,9 @@ const Reader: React.FC<ReaderProps> = ({
 
   if (!book) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900 p-4">
         <div className="text-center">
+          <Book className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
             No hay libro seleccionado
           </h2>
@@ -151,16 +154,16 @@ const Reader: React.FC<ReaderProps> = ({
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900">
       {/* Top Navigation */}
       <div className="sticky top-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/books')}
               className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
             >
-              <Home className="h-6 w-6" />
+              <ArrowLeft className="h-6 w-6" />
             </button>
             
             <div className="text-center">
@@ -177,6 +180,13 @@ const Reader: React.FC<ReaderProps> = ({
               >
                 {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </button>
+              
+              <button
+                onClick={onFullScreenMode}
+                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              >
+                <Maximize className="h-5 w-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -186,12 +196,15 @@ const Reader: React.FC<ReaderProps> = ({
       <div 
         ref={contentRef}
         className="flex-1 overflow-y-auto px-4 py-8"
+        style={{
+          height: 'calc(100vh - 16rem)',
+        }}
       >
         <div className="max-w-3xl mx-auto">
           {words.map((word, idx) => (
             <React.Fragment key={`${word.text}-${idx}`}>
               <span
-                className="word inline-block cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 px-1.5 py-0.5 rounded transition-colors text-gray-900 dark:text-white"
+                className="word inline-block cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 px-1.5 py-0.5 rounded transition-colors text-gray-900 dark:text-white border border-gray-200/40 dark:border-gray-700/40 mx-0.5 bg-gray-50/30 dark:bg-gray-800/30"
                 onClick={(e) => handleWordClick(word, e)}
                 style={{ fontSize: `${fontSize}px` }}
               >
@@ -205,7 +218,7 @@ const Reader: React.FC<ReaderProps> = ({
 
       {/* Bottom Controls */}
       <div className="sticky bottom-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={handlePreviousPage}
