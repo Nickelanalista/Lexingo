@@ -83,6 +83,11 @@ export default function BooksPage() {
     navigate('/reader');
   };
 
+  // Función para determinar si un libro no ha sido comenzado
+  const isNewBook = (book) => {
+    return book.current_page === 1 && new Date(book.last_read).getTime() === new Date(book.created_at).getTime();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -186,7 +191,11 @@ export default function BooksPage() {
 
                 {/* Last Read */}
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  Última lectura: {new Date(book.last_read).toLocaleDateString()}
+                  {isNewBook(book) ? (
+                    'Libro sin comenzar'
+                  ) : (
+                    `Última lectura: ${new Date(book.last_read).toLocaleDateString()}`
+                  )}
                 </p>
 
                 {/* Actions */}
@@ -196,7 +205,7 @@ export default function BooksPage() {
                     className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                   >
                     <BookOpen className="h-4 w-4 mr-2" />
-                    Continuar
+                    {isNewBook(book) ? 'Empezar' : 'Continuar'}
                   </button>
 
                   <button
