@@ -1,14 +1,21 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Home, Library, BookOpen, User, Settings } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, Library, Plus, User, Settings } from 'lucide-react';
 
 const MobileNavigation = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   
   const navigationItems = [
     { path: '/', icon: Home, label: 'Inicio' },
     { path: '/books', icon: Library, label: 'Libros' },
-    { path: '/reader', icon: BookOpen, label: 'Lectura' },
+    { 
+      path: '/upload',
+      icon: Plus,
+      label: 'Subir',
+      special: true,
+      onClick: () => navigate('/upload')
+    },
     { path: '/profile', icon: User, label: 'Perfil' },
     { path: '/settings', icon: Settings, label: 'Ajustes' }
   ];
@@ -25,6 +32,21 @@ const MobileNavigation = () => {
           const Icon = item.icon;
           const active = isActive(item.path);
           
+          if (item.special) {
+            return (
+              <button
+                key={item.path}
+                onClick={item.onClick}
+                className="flex flex-col items-center py-2 px-3 text-purple-400 hover:text-purple-300 relative"
+              >
+                <div className="bg-purple-500 rounded-full p-3 -mt-6 shadow-lg border-4 border-gray-900">
+                  <Icon className="h-6 w-6 text-white" />
+                </div>
+                <span className="text-xs mt-1">{item.label}</span>
+              </button>
+            );
+          }
+
           return (
             <Link
               key={item.path}

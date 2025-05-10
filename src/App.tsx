@@ -11,6 +11,7 @@ import HomePage from './components/HomePage';
 import BooksPage from './pages/BooksPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import UploadPage from './pages/UploadPage';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -47,6 +48,7 @@ function App() {
                 <Route path="/reader" element={<Reader />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/upload" element={<UploadPage />} />
               </Routes>
             </main>
 
