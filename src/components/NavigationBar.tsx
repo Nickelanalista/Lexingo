@@ -42,11 +42,12 @@ const NavigationBar: React.FC = () => {
           .insert([
             { 
               id: user.id,
-              email: user.email
+              email: user.email,
+              name: user.user_metadata?.name || null
             }
           ])
           .select()
-          .maybeSingle();
+          .single();
 
         if (createError) {
           console.error('Error creating profile:', createError);
@@ -168,7 +169,7 @@ const NavigationBar: React.FC = () => {
                 <img
                   src={profile.avatar_url}
                   alt={profile.name || 'Usuario'}
-                  className="w-10 h-10 rounded-full border-2 border-purple-200 dark:border-purple-800"
+                  className="w-10 h-10 rounded-full border-2 border-purple-200 dark:border-purple-800 object-cover"
                 />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
