@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
+import { useTranslator } from '../hooks/useTranslator';
 import { Word } from '../types';
 import WordTooltip from './WordTooltip';
 import { XCircle, Maximize, Sun, Moon, Plus, Minus, Home, Bookmark, BookmarkCheck, ArrowLeft, ArrowRight, Languages, TextSelect, X, Type, Check } from 'lucide-react';
@@ -210,8 +211,6 @@ const Reader: React.FC<ReaderProps> = ({
     updateCurrentPage(pageNumber);
   };
 
-  // ... (rest of the existing code remains exactly the same)
-
   const BottomControlBar = () => (
     <div className={`fixed bottom-0 left-0 right-0 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm border-t border-gray-300 dark:border-gray-700 ${isIOS ? 'ios-safe-bottom' : ''} z-30 shadow-[0_-2px_5px_rgba(0,0,0,0.05)] dark:shadow-[0_-2px_5px_rgba(0,0,0,0.2)]`} style={{
       paddingBottom: isIOS ? 'env(safe-area-inset-bottom, 16px)' : undefined,
@@ -237,14 +236,10 @@ const Reader: React.FC<ReaderProps> = ({
               <Bookmark size={20} className="flex-shrink-0" />
             )}
           </button>
-
-          {/* ... (rest of the bottom bar content remains the same) */}
         </div>
       </div>
     </div>
   );
-
-  // ... (rest of the component remains exactly the same)
 };
 
 export default Reader;
