@@ -12,6 +12,7 @@ import BooksPage from './pages/BooksPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import UploadPage from './pages/UploadPage';
+import TermsPage from './pages/TermsPage';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -31,7 +32,14 @@ function App() {
   }, []);
   
   if (!session) {
-    return <LandingPage />;
+    return (
+      <Router>
+        <Routes>
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
+      </Router>
+    );
   }
 
   return (
@@ -49,6 +57,7 @@ function App() {
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/upload" element={<UploadPage />} />
+                <Route path="/terms" element={<TermsPage />} />
               </Routes>
             </main>
 
