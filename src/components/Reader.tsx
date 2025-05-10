@@ -55,6 +55,20 @@ const Reader: React.FC<ReaderProps> = ({
   const paragraphTranslationRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
 
+  const closeParaTranslation = useCallback(() => {
+    setIsParagraphTranslationOpen(false);
+    setTranslatedParagraph('');
+    setIsTranslatingParagraph(false);
+  }, []);
+
+  const resetParagraphSelection = useCallback(() => {
+    setSelectionMode('inactive');
+    setStartWordIndex(null);
+    setEndWordIndex(null);
+    setSelectedParagraph('');
+    setShowParaSelectionInstructions(false);
+  }, []);
+
   useEffect(() => {
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     setShowApiKeyWarning(!apiKey);
@@ -102,7 +116,7 @@ const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     closeParaTranslation();
     resetParagraphSelection();
-  }, [book?.currentPage]);
+  }, [book?.currentPage, closeParaTranslation, resetParagraphSelection]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -120,7 +134,7 @@ const Reader: React.FC<ReaderProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isParagraphTranslationOpen, isTranslatingParagraph]);
+  }, [isParagraphTranslationOpen, isTranslatingParagraph, closeParaTranslation]);
 
   useEffect(() => {
     const loadBookmarkStatus = async () => {
@@ -238,6 +252,12 @@ const Reader: React.FC<ReaderProps> = ({
           </button>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="relative h-full" ref={readerContainerRef}>
+      <BottomControlBar />
     </div>
   );
 };
