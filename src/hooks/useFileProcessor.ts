@@ -119,7 +119,7 @@ export const useFileProcessor = () => {
     try {
       const text = await file.text();
       
-      // Dividir el texto en páginas (aproximadamente 500 palabras por página)
+      // Split text into pages (approximately 500 words per page)
       const words = text.split(/\s+/);
       const wordsPerPage = 500;
       const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage));
@@ -172,13 +172,13 @@ export const useFileProcessor = () => {
     }
   };
 
-  // Función principal para procesar cualquier tipo de archivo
+  // Main function to process any file type
   const processFile = useCallback(async (file: File) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      // Determinar el tipo de archivo y procesarlo de acuerdo al formato
+      // Determine file type and process accordingly
       const fileType = file.type.toLowerCase();
       let book: Book | null = null;
       
@@ -194,7 +194,7 @@ export const useFileProcessor = () => {
       ) {
         book = await processTextFile(file);
       } else {
-        // Si no podemos identificar el tipo por MIME, intentamos por extensión
+        // If we can't identify by MIME type, try by extension
         const extension = file.name.split('.').pop()?.toLowerCase() || '';
         if (['txt', 'md', 'markdown', 'html', 'htm', 'rtf', 'doc', 'docx'].includes(extension)) {
           book = await processTextFile(file);
