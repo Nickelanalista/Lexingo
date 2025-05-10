@@ -4,6 +4,7 @@ import { BookProvider } from './context/BookContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
 import NavigationBar from './components/NavigationBar';
+import MobileNavigation from './components/MobileNavigation';
 import Reader from './components/Reader';
 import LandingPage from './components/LandingPage';
 import HomePage from './components/HomePage';
@@ -36,10 +37,10 @@ function App() {
     <Router>
       <ThemeProvider>
         <BookProvider>
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+          <div className="min-h-screen bg-gray-900">
             <NavigationBar />
             
-            <main className="w-full">
+            <main className="w-full pb-20">
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/books" element={<BooksPage />} />
@@ -48,6 +49,8 @@ function App() {
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </main>
+
+            <MobileNavigation />
           </div>
         </BookProvider>
       </ThemeProvider>
