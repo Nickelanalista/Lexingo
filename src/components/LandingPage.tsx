@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Book, Sparkles, Brain, Zap, Languages, BookOpen } from 'lucide-react';
+import { Book, Sparkles, Brain, Zap, Languages, BookOpen, ChevronDown } from 'lucide-react';
 import AuthModal from './AuthModal';
 
 export default function LandingPage() {
@@ -11,8 +11,12 @@ export default function LandingPage() {
     setIsAuthModalOpen(true);
   };
 
+  const scrollToFeatures = () => {
+    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white overflow-x-hidden">
+    <div className="min-h-screen bg-gray-900 text-white">
       {/* Navigation */}
       <nav className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -34,11 +38,11 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <div className="relative">
+      <div className="relative min-h-[calc(100vh-4rem)] flex flex-col justify-center">
         {/* Background gradient */}
         <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 to-gray-900/20 pointer-events-none" />
         
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="text-center relative z-10">
             <div className="inline-flex items-center px-4 py-2 rounded-full bg-purple-900/30 border border-purple-700/30 mb-8">
               <Sparkles className="h-4 w-4 text-purple-400 mr-2" />
@@ -71,12 +75,20 @@ export default function LandingPage() {
                 Ya tengo cuenta
               </button>
             </div>
+
+            <button
+              onClick={scrollToFeatures}
+              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex flex-col items-center text-gray-400 hover:text-gray-300 transition-colors animate-bounce"
+            >
+              <span className="text-sm mb-2">Descubre más</span>
+              <ChevronDown className="h-6 w-6" />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Features Section */}
-      <div className="py-24 bg-gray-900">
+      <div id="features" className="py-24 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h2 className="text-3xl font-extrabold sm:text-4xl bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">

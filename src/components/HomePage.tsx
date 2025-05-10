@@ -8,6 +8,7 @@ export default function HomePage() {
   const [recentBooks, setRecentBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchRecentBooks();
@@ -35,8 +36,15 @@ export default function HomePage() {
     navigate('/reader', { state: { bookId: book.id } });
   };
 
+  const scrollToTop = () => {
+    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+    <div 
+      ref={contentRef}
+      className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-y-auto scroll-smooth"
+    >
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-8">
         {/* Welcome Section */}
         <div className="text-center">
@@ -156,15 +164,14 @@ export default function HomePage() {
         </div>
       </div>
 
-      <style jsx>{`
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}</style>
+      {/* Scroll to top button */}
+      <button
+        onClick={scrollToTop}
+        className="fixed bottom-6 right-6 p-3 bg-purple-600 text-white rounded-full shadow-lg hover:bg-purple-700 transition-colors"
+        aria-label="Volver arriba"
+      >
+        <ChevronUp className="w-5 h-5" />
+      </button>
     </div>
   );
 }
