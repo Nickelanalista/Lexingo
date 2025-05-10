@@ -1,12 +1,19 @@
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, Home, Library, BookOpen, User, Settings, LogOut } from 'lucide-react';
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
+=======
+import React, { useState, useEffect } from 'react';
+import { Book, Home, Library, BookOpen, User, Settings, LogOut } from 'lucide-react';
+import { useBookContext } from '../context/BookContext';
+>>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
 import { supabase } from '../lib/supabase';
 import { Link, useLocation } from 'react-router-dom';
 
 const NavigationBar: React.FC = () => {
   const { book } = useBookContext();
+<<<<<<< HEAD
   const { theme } = useThemeContext();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +35,14 @@ const NavigationBar: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
+=======
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  
+  useEffect(() => {
+    getProfile();
+>>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
   }, []);
 
   const getProfile = async () => {
@@ -104,15 +119,22 @@ const NavigationBar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+<<<<<<< HEAD
   // Logo según el tema
   const logoSrc = theme === 'dark' ? '/img/lexingo_white.png' : '/img/lexingo_black.png';
 
+=======
+>>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
   return (
     <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center">
+<<<<<<< HEAD
             <img src={logoSrc} alt="Lexingo" className="h-8" />
+=======
+            <Book className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+>>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
             <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">Lexingo</span>
           </div>
 
@@ -180,6 +202,7 @@ const NavigationBar: React.FC = () => {
           </nav>
 
           {/* User Profile */}
+<<<<<<< HEAD
           <div className="flex items-center space-x-4" ref={dropdownRef}>
             <div className="relative">
               <button 
@@ -213,6 +236,34 @@ const NavigationBar: React.FC = () => {
                   </button>
                 </div>
               )}
+=======
+          <div className="flex items-center space-x-4">
+            <div className="relative group">
+              {loading ? (
+                <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              ) : profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.name || 'Usuario'}
+                  className="w-10 h-10 rounded-full border-2 border-purple-200 dark:border-purple-800 object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
+                  {getInitials(profile?.name)}
+                </div>
+              )}
+              
+              {/* Dropdown Menu */}
+              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 hidden group-hover:block">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                >
+                  <LogOut size={16} className="mr-2" />
+                  Cerrar sesión
+                </button>
+              </div>
+>>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
             </div>
           </div>
         </div>
