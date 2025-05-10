@@ -13,8 +13,6 @@ interface ReaderProps {
   isFullScreen?: boolean;
 }
 
-type SelectionMode = 'inactive' | 'selectingStart' | 'selectingEnd' | 'selected';
-
 const Reader: React.FC<ReaderProps> = ({ 
   onFullScreenMode, 
   onExitFullScreen,
@@ -29,58 +27,22 @@ const Reader: React.FC<ReaderProps> = ({
     theme,
     toggleTheme
   } = useThemeContext();
-  const { translateParagraph } = useTranslator();
+
   const [selectedWord, setSelectedWord] = useState<string>('');
   const [tooltipAnchor, setTooltipAnchor] = useState<HTMLElement | null>(null);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const [showApiKeyWarning, setShowApiKeyWarning] = useState(false);
-  const [hasBookmark, setHasBookmark] = useState(false);
-  const [saveConfirmation, setSaveConfirmation] = useState(false);
-  const [isParagraphTranslationOpen, setIsParagraphTranslationOpen] = useState(false);
-  const [translatedParagraph, setTranslatedParagraph] = useState<string>('');
-  const [isTranslatingParagraph, setIsTranslatingParagraph] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>('inactive');
-  const [startWordIndex, setStartWordIndex] = useState<{paraIdx: number, wordIdx: number} | null>(null);
-  const [endWordIndex, setEndWordIndex] = useState<{paraIdx: number, wordIdx: number} | null>(null);
-  const [selectedParagraph, setSelectedParagraph] = useState<string>('');
-  const [showParaSelectionInstructions, setShowParaSelectionInstructions] = useState(false);
-  const [translationPosition, setTranslationPosition] = useState<'top' | 'bottom' | 'center'>('bottom');
-  const [translationCoords, setTranslationCoords] = useState({ top: 0, left: 0 });
-  const [isMobileView, setIsMobileView] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isBookmarked, setIsBookmarked] = useState(false);
-  const [bookmarkSaving, setBookmarkSaving] = useState(false);
-  
   const contentRef = useRef<HTMLDivElement>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const paragraphTranslationRef = useRef<HTMLDivElement>(null);
-  const readerContainerRef = useRef<HTMLDivElement>(null);
 
-  const closeParaTranslation = useCallback(() => {
-    setIsParagraphTranslationOpen(false);
-    setTranslatedParagraph('');
-    setIsTranslatingParagraph(false);
-  }, []);
-
-  const resetParagraphSelection = useCallback(() => {
-    setSelectionMode('inactive');
-    setStartWordIndex(null);
-    setEndWordIndex(null);
-    setSelectedParagraph('');
-    setShowParaSelectionInstructions(false);
-  }, []);
-
-  // Words of the current page
-  const words = useMemo(() => {
-    if (!book) return [];
-    
-    const currentPageIndex = book.currentPage - 1;
-    const pageContent = book.pages[currentPageIndex]?.content || '';
-    
-    return pageContent.split(/\s+/).map((text, index) => ({
-      text: text.replace(/[.,;:!?()[\]{}""'']/g, ''),
-      index
-    }));
+  // Find first non-empty page
+  useEffect(() => {
+    if (book && book.currentPage === 1) {
+      const firstNonEmptyPage = book.pages.findIndex(page => 
+        page.content.trim().length > 0
+      );
+      if (firstNonEmptyPage > 0) {
+        goToPage(firstNonEmptyPage + 1);
+      }
+    }
   }, [book]);
 
   // Handle word click
@@ -100,7 +62,12 @@ const Reader: React.FC<ReaderProps> = ({
   // Page navigation
   const handlePreviousPage = () => {
     if (book && book.currentPage > 1) {
-      goToPage(book.currentPage - 1);
+      let prevPage = book.currentPage - 1;
+      // Skip empty pages when going backwards
+      while (prevPage > 1 && !book.pages[prevPage - 1].content.trim()) {
+        prevPage--;
+      }
+      goToPage(prevPage);
       if (contentRef.current) {
         contentRef.current.scrollTop = 0;
       }
@@ -109,7 +76,12 @@ const Reader: React.FC<ReaderProps> = ({
 
   const handleNextPage = () => {
     if (book && book.currentPage < book.totalPages) {
-      goToPage(book.currentPage + 1);
+      let nextPage = book.currentPage + 1;
+      // Skip empty pages when going forward
+      while (nextPage < book.totalPages && !book.pages[nextPage - 1].content.trim()) {
+        nextPage++;
+      }
+      goToPage(nextPage);
       if (contentRef.current) {
         contentRef.current.scrollTop = 0;
       }
@@ -128,6 +100,19 @@ const Reader: React.FC<ReaderProps> = ({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [book]);
+
+  // Words of the current page
+  const words = useMemo(() => {
+    if (!book) return [];
+    
+    const currentPageIndex = book.currentPage - 1;
+    const pageContent = book.pages[currentPageIndex]?.content || '';
+    
+    return pageContent.split(/\s+/).map((text, index) => ({
+      text: text.replace(/[.,;:!?()[\]{}""'']/g, ''),
+      index
+    }));
   }, [book]);
 
   if (!book) {
@@ -154,10 +139,10 @@ const Reader: React.FC<ReaderProps> = ({
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Top Navigation */}
       <div className="sticky top-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate('/books')}
@@ -167,9 +152,8 @@ const Reader: React.FC<ReaderProps> = ({
             </button>
             
             <div className="text-center">
-              <h1 className="text-lg font-medium text-gray-900 dark:text-white">{book.title}</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Página {book.currentPage} de {book.totalPages}
+                {book.currentPage} / {book.totalPages}
               </p>
             </div>
 
@@ -196,9 +180,6 @@ const Reader: React.FC<ReaderProps> = ({
       <div 
         ref={contentRef}
         className="flex-1 overflow-y-auto px-4 py-8"
-        style={{
-          height: 'calc(100vh - 16rem)',
-        }}
       >
         <div className="max-w-3xl mx-auto">
           {words.map((word, idx) => (
@@ -218,7 +199,7 @@ const Reader: React.FC<ReaderProps> = ({
 
       {/* Bottom Controls */}
       <div className="sticky bottom-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-800">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between">
             <button
               onClick={handlePreviousPage}
