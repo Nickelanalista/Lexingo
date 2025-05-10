@@ -1,37 +1,41 @@
-import React, { useState, useCallback } from 'react';
-import { BookProvider, useBookContext } from './context/BookContext';
+import React, { useEffect, useState } from 'react';
+import { BookProvider } from './context/BookContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { supabase } from './lib/supabase';
 import NavigationBar from './components/NavigationBar';
 import FileUploader from './components/PDFUploader';
 import Reader from './components/Reader';
+import LandingPage from './components/LandingPage';
 
-// Enrutador simple para manejar las vistas
 const AppContent: React.FC = () => {
   const { book } = useBookContext();
   const [view, setView] = useState<'home' | 'reader' | 'fullscreen'>('home');
+  const [session, setSession] = useState(null);
   
-  // Si hay un libro cargado y no estamos en ninguna vista específica, mostrar el lector normal
-  React.useEffect(() => {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+  
+  useEffect(() => {
     if (book && view === 'home') {
       setView('reader');
     }
   }, [book]);
   
-  // Cambiar a vista de pantalla completa
-  const goToFullScreen = () => {
-    setView('fullscreen');
-  };
-  
-  // Volver a la vista normal del lector
-  const goToReader = useCallback(() => {
-    setView('reader');
-  }, []);
-  
-  // Volver a la página principal
-  const goToHome = useCallback(() => {
-    setView('home');
-  }, []);
-  
+  if (!session) {
+    return <LandingPage />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {view !== 'fullscreen' && <NavigationBar />}
@@ -41,8 +45,8 @@ const AppContent: React.FC = () => {
           {book && (view === 'reader' || view === 'fullscreen') ? (
             <div>
               <Reader 
-                onFullScreenMode={goToFullScreen} 
-                onExitFullScreen={goToReader} 
+                onFullScreenMode={() => setView('fullscreen')} 
+                onExitFullScreen={() => setView('reader')} 
                 isFullScreen={view === 'fullscreen'} 
               />
             </div>
@@ -83,4 +87,4 @@ function App() {
   );
 }
 
-export default App
+export default App;
