@@ -2,13 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos para corregir el viewport en dispositivos iOS */
+/* Estilos para permitir el scrolling */
 html, body {
-  overflow: hidden;
-  position: fixed;
+  overflow-x: hidden;
   width: 100%;
   height: 100%;
-  max-height: -webkit-fill-available;
+  min-height: 100%;
 }
 
 /* Clase para evitar que elementos fixed se oculten detrás de la barra de iPhone */
@@ -19,7 +18,7 @@ html, body {
 /* Tamaño de viewport para iOS */
 @supports (-webkit-touch-callout: none) {
   body {
-    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
   }
   
   .h-screen {

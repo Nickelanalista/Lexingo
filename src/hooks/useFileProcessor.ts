@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Book, BookPage } from '../types';
 import { useBookContext } from '../context/BookContext';
+import { supabase } from '../lib/supabase';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -24,6 +25,42 @@ export const useFileProcessor = () => {
       
       const totalPages = pdf.numPages;
       const pages: BookPage[] = [];
+      let coverImageUrl = null;
+      
+      // Get the first page for the cover
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      
+      await firstPage.render({
+        canvasContext: context,
+        viewport: viewport
+      }).promise;
+      
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.75);
+      });
+      
+      // Upload cover to Supabase Storage
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const fileName = `${user.id}/${Date.now()}-cover.jpg`;
+        const { data, error: uploadError } = await supabase.storage
+          .from('books')
+          .upload(fileName, blob);
+          
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('books')
+            .getPublicUrl(fileName);
+          coverImageUrl = publicUrl;
+        }
+      }
       
       // Process each page
       for (let i = 1; i <= totalPages; i++) {
@@ -41,35 +78,34 @@ export const useFileProcessor = () => {
         });
       }
       
-      // Detectar la primera página con contenido significativo
-      let firstContentfulPage = 1;
-      const minContentLength = 100; // Mínimo número de caracteres para considerar una página como "con contenido"
-      let emptyPagesSkipped = 0;
-      
-      for (let i = 0; i < pages.length; i++) {
-        // Eliminar espacios en blanco para verificar si hay contenido real
-        const contentWithoutSpaces = pages[i].content.replace(/\s+/g, '');
-        if (contentWithoutSpaces.length >= minContentLength) {
-          firstContentfulPage = i + 1; // +1 porque los índices comienzan en 0, pero las páginas en 1
-          emptyPagesSkipped = i;
-          break;
-        }
-      }
-      
-      // Si saltamos más de 0 páginas, añadir una nota en la primera página con contenido
-      if (emptyPagesSkipped > 0 && firstContentfulPage <= pages.length) {
-        const originalContent = pages[firstContentfulPage - 1].content;
-        pages[firstContentfulPage - 1].content = 
-          `[Se omitieron ${emptyPagesSkipped} ${emptyPagesSkipped === 1 ? 'página inicial' : 'páginas iniciales'} sin contenido relevante]\n\n${originalContent}`;
-      }
-      
       // Create book object
       const book: Book = {
         title: file.name.replace(/\.[^.]+$/i, ''),
         pages,
-        currentPage: firstContentfulPage, // Comenzar en la primera página con contenido
+        currentPage: 1,
         totalPages,
+        coverUrl: coverImageUrl,
+        lastRead: new Date().toISOString()
       };
+      
+      // Save book to Supabase
+      if (user) {
+        const { data: savedBook, error: saveError } = await supabase
+          .from('books')
+          .insert({
+            title: book.title,
+            user_id: user.id,
+            content: JSON.stringify(pages),
+            current_page: 1,
+            total_pages: totalPages,
+            cover_url: coverImageUrl,
+            last_read: new Date().toISOString()
+          })
+          .select()
+          .single();
+          
+        if (saveError) throw saveError;
+      }
       
       return book;
     } catch (err) {
@@ -83,7 +119,7 @@ export const useFileProcessor = () => {
     try {
       const text = await file.text();
       
-      // Dividir el texto en páginas (aproximadamente 500 palabras por página)
+      // Split text into pages (approximately 500 words per page)
       const words = text.split(/\s+/);
       const wordsPerPage = 500;
       const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage));
@@ -106,7 +142,27 @@ export const useFileProcessor = () => {
         pages,
         currentPage: 1,
         totalPages,
+        lastRead: new Date().toISOString()
       };
+      
+      // Save book to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: savedBook, error: saveError } = await supabase
+          .from('books')
+          .insert({
+            title: book.title,
+            user_id: user.id,
+            content: JSON.stringify(pages),
+            current_page: 1,
+            total_pages: totalPages,
+            last_read: new Date().toISOString()
+          })
+          .select()
+          .single();
+          
+        if (saveError) throw saveError;
+      }
       
       return book;
     } catch (err) {
@@ -116,13 +172,13 @@ export const useFileProcessor = () => {
     }
   };
 
-  // Función principal para procesar cualquier tipo de archivo
+  // Main function to process any file type
   const processFile = useCallback(async (file: File) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      // Determinar el tipo de archivo y procesarlo de acuerdo al formato
+      // Determine file type and process accordingly
       const fileType = file.type.toLowerCase();
       let book: Book | null = null;
       
@@ -138,7 +194,7 @@ export const useFileProcessor = () => {
       ) {
         book = await processTextFile(file);
       } else {
-        // Si no podemos identificar el tipo por MIME, intentamos por extensión
+        // If we can't identify by MIME type, try by extension
         const extension = file.name.split('.').pop()?.toLowerCase() || '';
         if (['txt', 'md', 'markdown', 'html', 'htm', 'rtf', 'doc', 'docx'].includes(extension)) {
           book = await processTextFile(file);
@@ -165,4 +221,4 @@ export const useFileProcessor = () => {
   }, [setBook, setIsLoading]);
 
   return { processFile, error };
-}; 
+};
