@@ -60,10 +60,10 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 overflow-y-auto pb-20">
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+    <div className="min-h-screen bg-gray-900 overflow-y-auto">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8 pb-24">
         {/* Welcome Section */}
-        <div className="text-center mb-8">
+        <div className="text-center">
           <h1 className="text-xl font-bold text-white">
             Bienvenido a{' '}
             <span className="bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
@@ -99,14 +99,14 @@ export default function HomePage() {
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-purple-500 border-t-transparent" />
             </div>
           ) : recentBooks.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recentBooks.slice(0, 6).map((book) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {recentBooks.slice(0, 4).map((book) => (
                 <button
                   key={book.id}
                   onClick={() => handleOpenBook(book)}
                   className="bg-gray-800 rounded-lg overflow-hidden group text-left w-full hover:ring-2 hover:ring-purple-500/50 transition-all duration-300"
                 >
-                  <div className="aspect-[3/4] relative overflow-hidden">
+                  <div className="aspect-[3/4] h-[180px] relative overflow-hidden">
                     {book.cover_url ? (
                       <img
                         src={book.cover_url}
@@ -115,7 +115,7 @@ export default function HomePage() {
                       />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
-                        <Book className="w-12 h-12 text-gray-400" />
+                        <Book className="w-10 h-10 text-gray-400" />
                       </div>
                     )}
                     
@@ -123,7 +123,6 @@ export default function HomePage() {
                     <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2">
                       <div className="flex justify-between text-xs text-white mb-1">
                         <span>{Math.round((book.current_page / book.total_pages) * 100)}%</span>
-                        <span>Página {book.current_page} de {book.total_pages}</span>
                       </div>
                       <div className="bg-gray-600/50 rounded-full h-1">
                         <div 
@@ -134,12 +133,12 @@ export default function HomePage() {
                     </div>
                   </div>
                   
-                  <div className="p-4">
-                    <h3 className="font-medium text-white mb-1 line-clamp-1">
+                  <div className="p-3">
+                    <h3 className="font-medium text-white text-sm mb-1 line-clamp-1">
                       {book.title}
                     </h3>
                     <p className="text-xs text-gray-400">
-                      Última lectura: {new Date(book.last_read).toLocaleDateString()}
+                      Página {book.current_page} de {book.total_pages}
                     </p>
                   </div>
                 </button>
@@ -167,12 +166,12 @@ export default function HomePage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-6 max-w-2xl mx-auto">
+        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
           <button
             onClick={() => navigate('/books')}
-            className="p-6 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 transform hover:scale-105 group"
+            className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group"
           >
-            <Book className="w-8 h-8 text-purple-500 mb-3 mx-auto group-hover:text-purple-400" />
+            <Book className="w-6 h-6 text-purple-500 mb-2 mx-auto group-hover:text-purple-400" />
             <span className="block text-sm font-medium text-white">
               Mis Libros
             </span>
@@ -180,9 +179,9 @@ export default function HomePage() {
           
           <button
             onClick={() => navigate('/settings')}
-            className="p-6 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 transform hover:scale-105 group"
+            className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group"
           >
-            <Upload className="w-8 h-8 text-blue-500 mb-3 mx-auto group-hover:text-blue-400" />
+            <Upload className="w-6 h-6 text-blue-500 mb-2 mx-auto group-hover:text-blue-400" />
             <span className="block text-sm font-medium text-white">
               Importar
             </span>

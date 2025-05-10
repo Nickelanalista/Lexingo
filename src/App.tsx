@@ -37,10 +37,10 @@ function App() {
     <Router>
       <ThemeProvider>
         <BookProvider>
-          <div className="min-h-screen bg-gray-900">
+          <div className="min-h-screen bg-gray-900 flex flex-col overflow-hidden">
             <NavigationBar />
             
-            <main className="w-full pb-20">
+            <main className="flex-1 overflow-y-auto">
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/books" element={<BooksPage />} />
