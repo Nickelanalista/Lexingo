@@ -3,8 +3,8 @@ import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { Word } from '../types';
 import WordTooltip from './WordTooltip';
-import { Home, Sun, Moon, Maximize, Minimize, ArrowLeft, ArrowRight, Minus, Plus, Languages, Bookmark, BookmarkCheck, Book } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Home, Sun, Moon, Maximize, Minimize, ArrowLeft, ArrowRight, Minus, Plus, Languages, Bookmark, BookmarkCheck, Book, Library, User, Settings } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 
 interface ReaderProps {
   onFullScreenMode?: () => void;
@@ -32,6 +32,7 @@ const Reader: React.FC<ReaderProps> = ({
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [isFullScreenMode, setIsFullScreenMode] = useState(false);
   const [hasBookmark, setHasBookmark] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +77,6 @@ const Reader: React.FC<ReaderProps> = ({
   const handlePreviousPage = () => {
     if (book && book.currentPage > 1) {
       let prevPage = book.currentPage - 1;
-      // Skip empty pages when going backwards
       while (prevPage > 1 && !book.pages[prevPage - 1].content.trim()) {
         prevPage--;
       }
@@ -90,7 +90,6 @@ const Reader: React.FC<ReaderProps> = ({
   const handleNextPage = () => {
     if (book && book.currentPage < book.totalPages) {
       let nextPage = book.currentPage + 1;
-      // Skip empty pages when going forward
       while (nextPage < book.totalPages && !book.pages[nextPage - 1].content.trim()) {
         nextPage++;
       }
@@ -129,6 +128,14 @@ const Reader: React.FC<ReaderProps> = ({
       index
     }));
   }, [book]);
+
+  // Mobile navigation items
+  const navigationItems = [
+    { path: '/', icon: Home, label: 'Inicio' },
+    { path: '/books', icon: Library, label: 'Libros' },
+    { path: '/profile', icon: User, label: 'Perfil' },
+    { path: '/settings', icon: Settings, label: 'Ajustes' }
+  ];
 
   if (!book) {
     return (
@@ -193,7 +200,8 @@ const Reader: React.FC<ReaderProps> = ({
         ref={contentRef}
         className="flex-1 overflow-y-auto px-4 py-8"
         style={{
-          height: 'calc(100vh - 8rem)'
+          height: 'calc(100vh - 8rem)',
+          paddingBottom: 'calc(4rem + env(safe-area-inset-bottom, 16px))'
         }}
       >
         <div 
@@ -215,45 +223,67 @@ const Reader: React.FC<ReaderProps> = ({
       </div>
 
       {/* Bottom Controls */}
-      <div className="bg-gray-900/90 backdrop-blur-sm border-t border-gray-800 py-2 px-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <button
-            onClick={handlePreviousPage}
-            disabled={book.currentPage <= 1}
-            className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
-          >
-            <ArrowLeft className="h-6 w-6" />
-          </button>
-
-          <div className="flex items-center space-x-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-t border-gray-800">
+        {/* Reading Controls */}
+        <div className="py-2 px-4">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
             <button
-              onClick={decreaseFontSize}
-              disabled={fontSize <= 12}
+              onClick={handlePreviousPage}
+              disabled={book.currentPage <= 1}
               className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
             >
-              <Minus className="h-5 w-5" />
+              <ArrowLeft className="h-6 w-6" />
             </button>
-            
-            <span className="text-gray-400 font-medium">
-              {fontSize}
-            </span>
-            
+
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={decreaseFontSize}
+                disabled={fontSize <= 12}
+                className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
+              >
+                <Minus className="h-5 w-5" />
+              </button>
+              
+              <span className="text-gray-400 font-medium">
+                {fontSize}
+              </span>
+              
+              <button
+                onClick={increaseFontSize}
+                disabled={fontSize >= 24}
+                className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+
             <button
-              onClick={increaseFontSize}
-              disabled={fontSize >= 24}
+              onClick={handleNextPage}
+              disabled={book.currentPage >= book.totalPages}
               className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
             >
-              <Plus className="h-5 w-5" />
+              <ArrowRight className="h-6 w-6" />
             </button>
           </div>
+        </div>
 
-          <button
-            onClick={handleNextPage}
-            disabled={book.currentPage >= book.totalPages}
-            className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
-          >
-            <ArrowRight className="h-6 w-6" />
-          </button>
+        {/* Mobile Navigation Menu */}
+        <div className="md:hidden border-t border-gray-800">
+          <div className="flex items-center justify-around px-2 py-2" style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+            {navigationItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className="flex flex-col items-center p-2 text-gray-400 hover:text-white"
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-xs mt-1">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
 
