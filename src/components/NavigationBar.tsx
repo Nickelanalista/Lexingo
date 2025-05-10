@@ -42,9 +42,7 @@ const NavigationBar: React.FC = () => {
           .insert([
             { 
               id: user.id,
-              email: user.email,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+              email: user.email
             }
           ])
           .select()
