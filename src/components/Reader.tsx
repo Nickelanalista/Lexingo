@@ -514,7 +514,7 @@ const Reader: React.FC<ReaderProps> = ({
   
   // Componente Header para reutilizar en ambos modos
   const ReaderHeader = () => (
-    <header className="flex items-center justify-between py-3 px-2 border-b border-gray-300 dark:border-gray-700 sticky top-0 z-20 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm shadow-sm">
+    <header className={`flex items-center justify-between ${isFullScreen ? 'py-2 sticky top-0' : 'py-3'} px-2 border-b border-gray-300 dark:border-gray-700 sticky top-0 z-20 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm shadow-sm`}>
       <div className="max-w-3xl w-full mx-auto flex items-center justify-between px-3">
         {/* Sección de inicio */}
         <div className="flex items-center">
@@ -528,6 +528,9 @@ const Reader: React.FC<ReaderProps> = ({
           </button>
         </div>
         
+        {/* Separador */}
+        <div className="h-8 w-px bg-gray-300/50 dark:bg-gray-600/50 mx-3 hidden sm:block"></div>
+        
         {/* Título y página */}
         <div className="text-center flex-grow mx-2">
           <div className="flex items-center justify-center">
@@ -536,6 +539,9 @@ const Reader: React.FC<ReaderProps> = ({
             </span>
           </div>
         </div>
+        
+        {/* Separador */}
+        <div className="h-8 w-px bg-gray-300/50 dark:bg-gray-600/50 mx-3 hidden sm:block"></div>
         
         {/* Controles de tema y pantalla */}
         <div className="flex items-center space-x-2">
@@ -561,8 +567,9 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Componente de barra inferior
   const BottomControlBar = () => (
-    <div className={`fixed bottom-0 left-0 right-0 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm border-t border-gray-300 dark:border-gray-700 ${isIOS ? 'py-4 ios-safe-bottom' : isMobileView ? 'py-3' : 'py-2'} z-30 shadow-[0_-2px_5px_rgba(0,0,0,0.05)] dark:shadow-[0_-2px_5px_rgba(0,0,0,0.2)]`} style={{
-      paddingBottom: isIOS ? 'env(safe-area-inset-bottom, 16px)' : undefined
+    <div className={`fixed bottom-0 left-0 right-0 bg-gradient-to-r from-blue-50/95 to-indigo-50/95 dark:from-gray-800/95 dark:to-gray-900/95 backdrop-blur-sm border-t border-gray-300 dark:border-gray-700 ${isIOS ? 'ios-safe-bottom' : ''} z-30 shadow-[0_-2px_5px_rgba(0,0,0,0.05)] dark:shadow-[0_-2px_5px_rgba(0,0,0,0.2)]`} style={{
+      paddingBottom: isIOS ? 'env(safe-area-inset-bottom, 16px)' : undefined,
+      height: isIOS ? '80px' : isMobileView ? '70px' : '60px'
     }}>
       <div className="max-w-3xl mx-auto flex items-center justify-between px-3 h-full">
         {/* Sección de marcador y selección de párrafos */}
@@ -623,6 +630,9 @@ const Reader: React.FC<ReaderProps> = ({
           )}
         </div>
         
+        {/* Separador vertical */}
+        <div className="h-8 w-px bg-gray-300/50 dark:bg-gray-600/50 mx-1"></div>
+        
         {/* Sección de navegación */}
         <div className="flex items-center justify-center flex-1">
           <button
@@ -645,6 +655,9 @@ const Reader: React.FC<ReaderProps> = ({
             <ArrowRight size={20} className="flex-shrink-0" />
           </button>
         </div>
+        
+        {/* Separador vertical */}
+        <div className="h-8 w-px bg-gray-300/50 dark:bg-gray-600/50 mx-1"></div>
         
         {/* Sección de zoom */}
         <div className="flex items-center justify-center flex-1">
@@ -786,18 +799,18 @@ const Reader: React.FC<ReaderProps> = ({
             fontSize: `${fontSize}px`,
             lineHeight: 1.6,
             minHeight: isFullScreen 
-              ? 'calc(100vh - 140px)' 
+              ? 'calc(100vh - 120px)' 
               : isIOS 
                 ? 'calc((var(--vh, 1vh) * 100) - 200px)' 
                 : isMobileView 
-                  ? 'calc(100vh - 180px)' 
+                  ? 'calc(100vh - 190px)' 
                   : 'calc(100vh - 160px)',
             maxHeight: isFullScreen 
-              ? 'calc(100vh - 140px)' 
+              ? 'calc(100vh - 120px)' 
               : isIOS 
                 ? 'calc((var(--vh, 1vh) * 100) - 200px)' 
                 : isMobileView 
-                  ? 'calc(100vh - 180px)' 
+                  ? 'calc(100vh - 190px)' 
                   : 'calc(100vh - 160px)',
             overflowY: 'auto',
             userSelect: 'text',
