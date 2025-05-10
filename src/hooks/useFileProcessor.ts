@@ -98,7 +98,8 @@ export const useFileProcessor = () => {
             content: JSON.stringify(pages),
             current_page: 1,
             total_pages: totalPages,
-            cover_url: coverImageUrl
+            cover_url: coverImageUrl,
+            last_read: new Date().toISOString()
           })
           .select()
           .single();
@@ -141,7 +142,27 @@ export const useFileProcessor = () => {
         pages,
         currentPage: 1,
         totalPages,
+        lastRead: new Date().toISOString()
       };
+      
+      // Save book to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: savedBook, error: saveError } = await supabase
+          .from('books')
+          .insert({
+            title: book.title,
+            user_id: user.id,
+            content: JSON.stringify(pages),
+            current_page: 1,
+            total_pages: totalPages,
+            last_read: new Date().toISOString()
+          })
+          .select()
+          .single();
+          
+        if (saveError) throw saveError;
+      }
       
       return book;
     } catch (err) {

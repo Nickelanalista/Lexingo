@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { FileText, Upload } from 'lucide-react';
 import { useFileProcessor } from '../hooks/useFileProcessor';
 import { useBookContext } from '../context/BookContext';
+import { useNavigate } from 'react-router-dom';
 
 interface PDFUploaderProps {
   onFileProcessed: () => void;
@@ -22,16 +23,17 @@ const SUPPORTED_FORMATS = {
 const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
   const { processFile, error } = useFileProcessor();
   const { isLoading } = useBookContext();
+  const navigate = useNavigate();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       const result = await processFile(file);
       if (result) {
-        onFileProcessed();
+        navigate('/books');
       }
     }
-  }, [processFile, onFileProcessed]);
+  }, [processFile, navigate]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
