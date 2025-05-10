@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus, Library } from 'lucide-react';
+import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus, Library, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FileUploader from './PDFUploader';
 
