@@ -1,10 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
-import { useTranslator } from '../hooks/useTranslator';
 import { Word } from '../types';
 import WordTooltip from './WordTooltip';
-import { XCircle, Maximize, Sun, Moon, Plus, Minus, Home, Bookmark, BookmarkCheck, ArrowLeft, ArrowRight, Languages, TextSelect, X, Type, Check, Book } from 'lucide-react';
+import { Home, Sun, Moon, Maximize, Minimize, ArrowLeft, ArrowRight, Minus, Plus, Languages, Bookmark, BookmarkCheck, Book } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ReaderProps {
@@ -31,7 +30,10 @@ const Reader: React.FC<ReaderProps> = ({
   const [selectedWord, setSelectedWord] = useState<string>('');
   const [tooltipAnchor, setTooltipAnchor] = useState<HTMLElement | null>(null);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const [isFullScreenMode, setIsFullScreenMode] = useState(false);
+  const [hasBookmark, setHasBookmark] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
 
   // Find first non-empty page
   useEffect(() => {
@@ -58,6 +60,17 @@ const Reader: React.FC<ReaderProps> = ({
   const closeTooltip = useCallback(() => {
     setIsTooltipOpen(false);
   }, []);
+
+  // Toggle full screen
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      readerRef.current?.requestFullscreen();
+      setIsFullScreenMode(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullScreenMode(false);
+    }
+  };
 
   // Page navigation
   const handlePreviousPage = () => {
@@ -95,12 +108,14 @@ const Reader: React.FC<ReaderProps> = ({
         handlePreviousPage();
       } else if (e.key === 'ArrowRight') {
         handleNextPage();
+      } else if (e.key === 'Escape' && isFullScreenMode) {
+        document.exitFullscreen();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [book]);
+  }, [book, isFullScreenMode]);
 
   // Words of the current page
   const words = useMemo(() => {
@@ -117,13 +132,13 @@ const Reader: React.FC<ReaderProps> = ({
 
   if (!book) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gray-900 p-4">
         <div className="text-center">
           <Book className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+          <h2 className="text-xl font-semibold text-white mb-4">
             No hay libro seleccionado
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-8">
+          <p className="text-gray-400 mb-8">
             Selecciona un libro de tu biblioteca para comenzar a leer
           </p>
           <button
@@ -139,55 +154,57 @@ const Reader: React.FC<ReaderProps> = ({
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div 
+      ref={readerRef}
+      className="min-h-screen bg-gray-900 flex flex-col"
+    >
       {/* Top Navigation */}
-      <div className="sticky top-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-2">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate('/books')}
-              className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-            >
-              <ArrowLeft className="h-6 w-6" />
-            </button>
-            
-            <div className="text-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {book.currentPage} / {book.totalPages}
-              </p>
-            </div>
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
+        <button
+          onClick={() => navigate('/books')}
+          className="p-2 text-gray-400 hover:text-white"
+        >
+          <Home className="h-5 w-5" />
+        </button>
 
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={toggleTheme}
-                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-              >
-                {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-              </button>
-              
-              <button
-                onClick={onFullScreenMode}
-                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-              >
-                <Maximize className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
+        <div className="text-gray-400">
+          {book.currentPage} / {book.totalPages}
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={toggleTheme}
+            className="p-2 text-gray-400 hover:text-white"
+          >
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </button>
+          
+          <button
+            onClick={toggleFullScreen}
+            className="p-2 text-gray-400 hover:text-white"
+          >
+            {isFullScreenMode ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+          </button>
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Content */}
       <div 
         ref={contentRef}
         className="flex-1 overflow-y-auto px-4 py-8"
+        style={{
+          height: 'calc(100vh - 8rem)'
+        }}
       >
-        <div className="max-w-3xl mx-auto">
+        <div 
+          className="max-w-3xl mx-auto"
+          style={{ fontSize: `${fontSize}px` }}
+        >
           {words.map((word, idx) => (
             <React.Fragment key={`${word.text}-${idx}`}>
               <span
-                className="word inline-block cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 px-1.5 py-0.5 rounded transition-colors text-gray-900 dark:text-white border border-gray-200/40 dark:border-gray-700/40 mx-0.5 bg-gray-50/30 dark:bg-gray-800/30"
+                className="inline-block px-1.5 py-0.5 mx-0.5 rounded cursor-pointer text-white bg-gray-800/50 hover:bg-blue-900/30 border border-gray-700/30"
                 onClick={(e) => handleWordClick(word, e)}
-                style={{ fontSize: `${fontSize}px` }}
               >
                 {word.text}
               </span>
@@ -198,47 +215,45 @@ const Reader: React.FC<ReaderProps> = ({
       </div>
 
       {/* Bottom Controls */}
-      <div className="sticky bottom-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-2">
-          <div className="flex items-center justify-between">
+      <div className="bg-gray-900/90 backdrop-blur-sm border-t border-gray-800 py-2 px-4">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <button
+            onClick={handlePreviousPage}
+            disabled={book.currentPage <= 1}
+            className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+
+          <div className="flex items-center space-x-4">
             <button
-              onClick={handlePreviousPage}
-              disabled={book.currentPage <= 1}
-              className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-50"
+              onClick={decreaseFontSize}
+              disabled={fontSize <= 12}
+              className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
             >
-              <ArrowLeft className="h-6 w-6" />
+              <Minus className="h-5 w-5" />
             </button>
-
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={decreaseFontSize}
-                disabled={fontSize <= 12}
-                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-50"
-              >
-                <Minus className="h-5 w-5" />
-              </button>
-              
-              <span className="text-gray-900 dark:text-white font-medium">
-                {fontSize}
-              </span>
-              
-              <button
-                onClick={increaseFontSize}
-                disabled={fontSize >= 24}
-                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-50"
-              >
-                <Plus className="h-5 w-5" />
-              </button>
-            </div>
-
+            
+            <span className="text-gray-400 font-medium">
+              {fontSize}
+            </span>
+            
             <button
-              onClick={handleNextPage}
-              disabled={book.currentPage >= book.totalPages}
-              className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white disabled:opacity-50"
+              onClick={increaseFontSize}
+              disabled={fontSize >= 24}
+              className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
             >
-              <ArrowRight className="h-6 w-6" />
+              <Plus className="h-5 w-5" />
             </button>
           </div>
+
+          <button
+            onClick={handleNextPage}
+            disabled={book.currentPage >= book.totalPages}
+            className="p-2 text-gray-400 hover:text-white disabled:opacity-50"
+          >
+            <ArrowRight className="h-6 w-6" />
+          </button>
         </div>
       </div>
 
