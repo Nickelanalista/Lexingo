@@ -7,6 +7,7 @@ import { Link, useLocation } from 'react-router-dom';
 const NavigationBar: React.FC = () => {
   const { book } = useBookContext();
   const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const location = useLocation();
   
   useEffect(() => {
@@ -15,19 +16,53 @@ const NavigationBar: React.FC = () => {
 
   const getProfile = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-        if (error) throw error;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+
+      // If no profile exists, create one
+      if (!data) {
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert([
+            { 
+              id: user.id,
+              email: user.email,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          ])
+          .select()
+          .maybeSingle();
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          return;
+        }
+
+        setProfile(newProfile);
+      } else {
         setProfile(data);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('Error in profile management:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -35,19 +70,21 @@ const NavigationBar: React.FC = () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      setProfile(null);
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | null) => {
+    if (!name) {
+      return profile?.email?.[0]?.toUpperCase() || '?';
+    }
     return name
-      ? name
-          .split(' ')
-          .map(n => n[0])
-          .join('')
-          .toUpperCase()
-      : profile?.email?.[0].toUpperCase() || '?';
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase();
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -127,7 +164,9 @@ const NavigationBar: React.FC = () => {
           {/* User Profile */}
           <div className="flex items-center space-x-4">
             <div className="relative group">
-              {profile?.avatar_url ? (
+              {loading ? (
+                <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              ) : profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.name || 'Usuario'}
@@ -135,7 +174,7 @@ const NavigationBar: React.FC = () => {
                 />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
-                  {getInitials(profile?.name || '')}
+                  {getInitials(profile?.name)}
                 </div>
               )}
               
