@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FileUploader from './PDFUploader';
 
 export default function HomePage() {
   const [recentBooks, setRecentBooks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentSlide, setCurrentSlide] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,8 +20,7 @@ export default function HomePage() {
         .from('books')
         .select('*')
         .eq('user_id', user.id)
-        .order('last_read', { ascending: false })
-        .limit(5);
+        .order('last_read', { ascending: false });
 
       if (error) throw error;
       setRecentBooks(data || []);
@@ -33,144 +31,124 @@ export default function HomePage() {
     }
   };
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % recentBooks.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + recentBooks.length) % recentBooks.length);
-  };
-
   const handleOpenBook = (book) => {
     navigate('/reader', { state: { bookId: book.id } });
   };
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Welcome Section - More compact */}
-      <div className="text-center mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+    <div className="max-w-4xl mx-auto px-4 py-6">
+      {/* Welcome Section - Minimal */}
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
           Bienvenido a{' '}
           <span className="bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
             Lexingo
           </span>
         </h1>
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 max-w-xl mx-auto">
-          Tu asistente de lectura con traducción instantánea
-        </p>
       </div>
 
-      {/* Recent Books Section - Adjusted height */}
-      {recentBooks.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-            <Book className="w-5 h-5 mr-2 text-purple-500" />
+      {/* Recent Books Section */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+            <Clock className="w-4 h-4 mr-2 text-purple-500" />
             Continuar leyendo
           </h2>
-          <div className="relative">
-            <div className="overflow-hidden rounded-lg shadow-lg">
-              <div 
-                className="flex transition-transform duration-300 ease-in-out"
-                style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+          <button
+            onClick={() => navigate('/books')}
+            className="text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+          >
+            Ver todos
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="h-24 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-purple-500 border-t-transparent" />
+          </div>
+        ) : recentBooks.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {recentBooks.slice(0, 2).map((book) => (
+              <div
+                key={book.id}
+                onClick={() => handleOpenBook(book)}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-gray-200 dark:border-gray-700 overflow-hidden flex"
               >
-                {recentBooks.map((book) => (
-                  <div
-                    key={book.id}
-                    className="w-full flex-shrink-0 relative h-[200px] sm:h-[250px] bg-gradient-to-br from-purple-500/10 to-blue-500/10 cursor-pointer"
-                    onClick={() => handleOpenBook(book)}
-                  >
-                    {book.cover_url ? (
-                      <img
-                        src={book.cover_url}
-                        alt={book.title}
-                        className="absolute inset-0 w-full h-full object-cover"
+                {/* Book Cover/Icon */}
+                <div className="w-20 h-24 bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+                  {book.cover_url ? (
+                    <img
+                      src={book.cover_url}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Book className="w-8 h-8 text-gray-400" />
+                  )}
+                </div>
+
+                {/* Book Info */}
+                <div className="p-3 flex-1 min-w-0">
+                  <h3 className="font-medium text-gray-900 dark:text-white text-sm mb-1 truncate">
+                    {book.title}
+                  </h3>
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Página {book.current_page} de {book.total_pages}
+                    </span>
+                    <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500"
+                        style={{ width: `${(book.current_page / book.total_pages) * 100}%` }}
                       />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Book className="w-12 h-12 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                      <div className="text-white w-full">
-                        <h3 className="text-lg font-bold mb-2 truncate">{book.title}</h3>
-                        <div className="flex items-center space-x-3 text-sm">
-                          <span>
-                            Página {book.current_page} de {book.total_pages}
-                          </span>
-                          <div className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-purple-500"
-                              style={{ width: `${(book.current_page / book.total_pages) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-            {recentBooks.length > 1 && (
-              <>
-                <button
-                  onClick={prevSlide}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 text-gray-800 hover:bg-white"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={nextSlide}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 text-gray-800 hover:bg-white"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </>
-            )}
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Upload Section - More compact */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-          <Sparkles className="w-5 h-5 mr-2 text-purple-500" />
-          Cargar nuevo libro
-        </h2>
-        <div className="max-w-md mx-auto">
-          <FileUploader onFileProcessed={() => fetchRecentBooks()} />
-        </div>
+        ) : (
+          <div className="text-center py-6 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <Book className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              No hay libros recientes
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Sample Books Section - More compact grid */}
-      <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-6">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-          <Sparkles className="w-5 h-5 mr-2 text-purple-500" />
-          Libros de ejemplo
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 hover:shadow-md transition-shadow cursor-pointer"
-            >
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
-                    <Book className="w-5 h-5 text-purple-500" />
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Libro de muestra {i}
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    Ejemplo para probar la funcionalidad
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Upload Section */}
+      <div className="mb-6">
+        <div className="flex items-center mb-3">
+          <Plus className="w-4 h-4 mr-2 text-purple-500" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Cargar nuevo libro
+          </h2>
         </div>
+        <FileUploader onFileProcessed={() => fetchRecentBooks()} />
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          onClick={() => navigate('/books')}
+          className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+        >
+          <Book className="w-6 h-6 text-purple-500 mb-2 mx-auto" />
+          <span className="block text-sm font-medium text-gray-900 dark:text-white">
+            Mis Libros
+          </span>
+        </button>
+        
+        <button
+          onClick={() => navigate('/settings')}
+          className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+        >
+          <Upload className="w-6 h-6 text-blue-500 mb-2 mx-auto" />
+          <span className="block text-sm font-medium text-gray-900 dark:text-white">
+            Importar
+          </span>
+        </button>
       </div>
     </div>
   );
