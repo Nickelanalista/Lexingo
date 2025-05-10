@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD
 import { Book, Sparkles, Brain, Zap, Languages, BookOpen, ChevronDown, BookText, GraduationCap, BarChart, Clock, Check } from 'lucide-react';
-=======
-import { Book, Sparkles, Brain, Zap, Languages, BookOpen, ChevronDown } from 'lucide-react';
->>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
 import AuthModal from './AuthModal';
 
 export default function LandingPage() {
@@ -26,11 +22,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
-<<<<<<< HEAD
               <img src="/img/lexingo_white.png" alt="Lexingo" className="h-8" />
-=======
-              <Book className="h-8 w-8 text-purple-500" />
->>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
               <span className="ml-2 text-xl font-bold">Lexingo</span>
             </div>
             <div className="flex items-center space-x-4">
@@ -83,18 +75,6 @@ export default function LandingPage() {
                 Ya tengo cuenta
               </button>
             </div>
-
-<<<<<<< HEAD
-            
-=======
-            <button
-              onClick={scrollToFeatures}
-              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex flex-col items-center text-gray-400 hover:text-gray-300 transition-colors animate-bounce"
-            >
-              <span className="text-sm mb-2">Descubre más</span>
-              <ChevronDown className="h-6 w-6" />
-            </button>
->>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
           </div>
         </div>
       </div>
@@ -165,7 +145,6 @@ export default function LandingPage() {
         </div>
       </div>
 
-<<<<<<< HEAD
       {/* How It Works Section */}
       <div className="py-24 bg-gray-900/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -346,8 +325,6 @@ export default function LandingPage() {
         </div>
       </div>
 
-=======
->>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
       {/* Auth Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}

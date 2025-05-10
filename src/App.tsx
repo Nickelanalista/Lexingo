@@ -46,11 +46,7 @@ function App() {
     <Router>
       <ThemeProvider>
         <BookProvider>
-<<<<<<< HEAD
           <div className="min-h-screen bg-gray-900 flex flex-col">
-=======
-          <div className="min-h-screen bg-gray-900 flex flex-col overflow-hidden">
->>>>>>> f319c03077baa6f46dba48100e9ab97e8fd13ede
             <NavigationBar />
             
             <main className="flex-1 overflow-y-auto">
