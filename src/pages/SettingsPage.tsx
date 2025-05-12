@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { Settings, Moon, Sun, Volume2, Type } from 'lucide-react';
+import React from 'react';
+import { Moon, Sun, Type } from 'lucide-react';
 import { useThemeContext } from '../context/ThemeContext';
 
 export default function SettingsPage() {
   const { theme, toggleTheme, fontSize, increaseFontSize, decreaseFontSize } = useThemeContext();
-  const [autoplay, setAutoplay] = useState(false);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -76,34 +75,6 @@ export default function SettingsPage() {
                 +
               </button>
             </div>
-          </div>
-
-          {/* Audio Setting */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Volume2 className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-              <div>
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                  Audio automático
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Reproducir audio al mostrar traducción
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setAutoplay(!autoplay)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
-                autoplay ? 'bg-purple-600' : 'bg-gray-200'
-              }`}
-            >
-              <span className="sr-only">Activar audio automático</span>
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  autoplay ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
           </div>
         </div>
       </div>

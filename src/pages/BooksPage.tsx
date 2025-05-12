@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Book, Trash2, BookOpen, Edit2, Check, X } from 'lucide-react';
+import { Book, Trash2, BookOpen, Edit2, Check, X, BookmarkCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useBookContext } from '../context/BookContext';
 
@@ -10,7 +10,7 @@ export default function BooksPage() {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const navigate = useNavigate();
-  const { setBook } = useBookContext();
+  const { loadBookAndSkipEmptyPages } = useBookContext();
 
   useEffect(() => {
     fetchBooks();
@@ -72,15 +72,48 @@ export default function BooksPage() {
     }
   };
 
-  const handleOpenBook = (book) => {
-    setBook({
-      title: book.title,
-      pages: JSON.parse(book.content),
-      currentPage: book.current_page,
-      totalPages: book.total_pages,
-      coverUrl: book.cover_url
-    });
-    navigate('/reader');
+  const handleOpenBook = async (book) => {
+    try {
+      // Indicar que estamos cargando
+      setLoading(true);
+      
+      // Forzar que comience siempre en la página 1 para detectar las páginas vacías
+      const bookData = {
+        id: book.id,
+        title: book.title,
+        pages: JSON.parse(book.content),
+        currentPage: 1, // Forzar a página 1 para que la lógica de omitir páginas funcione
+        totalPages: book.total_pages,
+        coverUrl: book.cover_url,
+        lastRead: book.last_read,
+        bookmarked: book.bookmarked,
+        bookmark_page: book.bookmark_page,
+        bookmark_position: book.bookmark_position,
+        bookmark_updated_at: book.bookmark_updated_at
+      };
+      
+      // Si es un libro sin comenzar, eliminar la marca de mensaje mostrado
+      // para que el mensaje de páginas omitidas aparezca nuevamente
+      if (isNewBook(book)) {
+        const bookId = book.title.replace(/\s+/g, '_').toLowerCase();
+        localStorage.removeItem(`book_${bookId}_message_shown`);
+      }
+      
+      // Si el usuario estaba en una página avanzada, la guardamos en localStorage
+      if (book.current_page > 1) {
+        localStorage.setItem(`book_${book.id}_lastPage`, book.current_page.toString());
+      }
+      
+      // Cargar el libro y aplicar la lógica para saltar páginas vacías
+      loadBookAndSkipEmptyPages(bookData);
+      
+      // Navegar hacia la página de lectura
+      navigate('/reader');
+    } catch (error) {
+      console.error('Error al abrir el libro:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Función para determinar si un libro no ha sido comenzado
@@ -194,7 +227,14 @@ export default function BooksPage() {
                   {isNewBook(book) ? (
                     'Libro sin comenzar'
                   ) : (
-                    `Última lectura: ${new Date(book.last_read).toLocaleDateString()}`
+                    <span className="flex items-center">
+                      {`Última lectura: ${new Date(book.last_read).toLocaleDateString()}`}
+                      {book.bookmarked && (
+                        <span className="ml-2 flex items-center text-blue-500" title="Tiene marcador guardado">
+                          <BookmarkCheck size={14} />
+                        </span>
+                      )}
+                    </span>
                   )}
                 </p>
 

@@ -15,10 +15,17 @@ export interface BookPage {
 }
 
 export interface Book {
+  id?: string;
   title: string;
   pages: BookPage[];
   currentPage: number;
   totalPages: number;
+  coverUrl?: string;
+  lastRead?: string;
+  bookmarked?: boolean;
+  bookmark_page?: number;
+  bookmark_position?: number;
+  bookmark_updated_at?: string;
 }
 
 export interface OpenAIResponse {

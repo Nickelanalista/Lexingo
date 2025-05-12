@@ -16,7 +16,7 @@ const MobileNavigation = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-t border-gray-800 z-50">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-t border-gray-800 z-[200]">
       <div 
         className="flex items-center justify-around px-2 relative" 
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
@@ -30,9 +30,9 @@ const MobileNavigation = () => {
               <Link
                 key={item.path}
                 to={item.path}
-                className="flex flex-col items-center justify-center -mt-6 bg-gradient-to-r from-purple-600 to-blue-600 p-4 rounded-full shadow-lg transform transition-transform hover:scale-110"
+                className="flex flex-col items-center justify-center bg-purple-600 p-3 rounded-full"
               >
-                <Icon className="h-6 w-6 text-white" />
+                <Icon className="h-5 w-5 text-white" />
                 <span className="sr-only">{item.label}</span>
               </Link>
             );
