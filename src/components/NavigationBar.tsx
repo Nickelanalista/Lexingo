@@ -9,6 +9,7 @@ const NavigationBar: React.FC = () => {
   const { book } = useBookContext();
   const { theme } = useThemeContext();
   const [profile, setProfile] = useState<any>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const location = useLocation();
@@ -73,6 +74,14 @@ const NavigationBar: React.FC = () => {
         setProfile(newProfile);
       } else {
         setProfile(data);
+        
+        // Si hay una URL de avatar, añadir timestamp para evitar caché
+        if (data.avatar_url) {
+          const timestamp = new Date().getTime();
+          setAvatarUrl(`${data.avatar_url}?t=${timestamp}`);
+        } else {
+          setAvatarUrl(null);
+        }
       }
     } catch (error) {
       console.error('Error in profile management:', error);
@@ -86,6 +95,7 @@ const NavigationBar: React.FC = () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setProfile(null);
+      setAvatarUrl(null);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -106,6 +116,12 @@ const NavigationBar: React.FC = () => {
 
   // Logo según el tema
   const logoSrc = theme === 'dark' ? '/img/lexingo_white.png' : '/img/lexingo_black.png';
+
+  // Function to handle avatar load error
+  const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('Error loading avatar in navbar');
+    setAvatarUrl(null); // Fallback to initials
+  };
 
   return (
     <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
@@ -188,12 +204,15 @@ const NavigationBar: React.FC = () => {
               >
                 {loading ? (
                   <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                ) : profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile.name || 'Usuario'}
-                    className="w-10 h-10 rounded-full border-2 border-purple-200 dark:border-purple-800 object-cover"
-                  />
+                ) : avatarUrl ? (
+                  <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-800">
+                    <img
+                      src={avatarUrl}
+                      alt={profile?.name || 'Usuario'}
+                      className="w-full h-full object-cover"
+                      onError={handleAvatarError}
+                    />
+                  </div>
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
                     {getInitials(profile?.name)}
@@ -203,7 +222,15 @@ const NavigationBar: React.FC = () => {
               
               {/* Dropdown Menu */}
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1">
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
+                  <Link 
+                    to="/profile"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <User size={16} className="mr-2" />
+                    Mi Perfil
+                  </Link>
                   <button
                     onClick={handleSignOut}
                     className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"

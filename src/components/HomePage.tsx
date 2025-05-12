@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus } from 'lucide-react';
+import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus, Award, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useBookContext } from '../context/BookContext';
 import FileUploader from './PDFUploader';
@@ -8,6 +8,36 @@ import FileUploader from './PDFUploader';
 export default function HomePage() {
   const [recentBooks, setRecentBooks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [communityBooks, setCommunityBooks] = useState([
+    {
+      id: 'comm1',
+      title: 'El principito',
+      author: 'Antoine de Saint-Exupéry',
+      cover: 'https://covers.openlibrary.org/b/id/7373399-L.jpg',
+      votes: 247
+    },
+    {
+      id: 'comm2',
+      title: 'Cien años de soledad',
+      author: 'Gabriel García Márquez',
+      cover: 'https://covers.openlibrary.org/b/id/10419087-L.jpg',
+      votes: 189
+    },
+    {
+      id: 'comm3',
+      title: 'Don Quijote de la Mancha',
+      author: 'Miguel de Cervantes',
+      cover: 'https://covers.openlibrary.org/b/id/12639849-L.jpg',
+      votes: 172
+    },
+    {
+      id: 'comm4',
+      title: 'Harry Potter y la Piedra Filosofal',
+      author: 'J.K. Rowling',
+      cover: 'https://covers.openlibrary.org/b/id/10521270-L.jpg',
+      votes: 155
+    }
+  ]);
   const navigate = useNavigate();
   const { setBook } = useBookContext();
 
@@ -61,7 +91,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-900 overflow-y-auto">
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8 pb-24">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
         {/* Welcome Section */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-white">
@@ -154,38 +184,79 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Upload Section */}
+        {/* Upload Section - Rediseñado */}
         <div className="space-y-4">
-          <div className="flex items-center">
+          <div className="flex items-center mb-4">
             <Plus className="w-4 h-4 mr-2 text-purple-500" />
             <h2 className="text-lg font-medium text-white">
               Cargar nuevo libro
             </h2>
           </div>
-          <FileUploader onFileProcessed={fetchRecentBooks} />
+          
+          <div className="flex gap-4">
+            <div className="w-4/5">
+              <FileUploader onFileProcessed={fetchRecentBooks} />
+            </div>
+            <button
+              onClick={() => navigate('/books')}
+              className="w-1/5 p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group flex flex-col items-center justify-center"
+            >
+              <Book className="w-6 h-6 text-purple-500 mb-2 group-hover:text-purple-400" />
+              <span className="block text-sm font-medium text-white text-center">
+                Mis Libros
+              </span>
+            </button>
+          </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
-          <button
-            onClick={() => navigate('/books')}
-            className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group"
-          >
-            <Book className="w-6 h-6 text-purple-500 mb-2 mx-auto group-hover:text-purple-400" />
-            <span className="block text-sm font-medium text-white">
-              Mis Libros
-            </span>
-          </button>
+        {/* Community Books Section */}
+        <div className="space-y-4 pb-12">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Award className="w-4 h-4 mr-2 text-purple-500" />
+              <h2 className="text-lg font-medium text-white">
+                Libros de la comunidad
+              </h2>
+            </div>
+            <button
+              onClick={() => {}} 
+              className="text-sm text-purple-400 hover:text-purple-300"
+            >
+              Explorar más
+            </button>
+          </div>
           
-          <button
-            onClick={() => navigate('/settings')}
-            className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group"
-          >
-            <Upload className="w-6 h-6 text-blue-500 mb-2 mx-auto group-hover:text-blue-400" />
-            <span className="block text-sm font-medium text-white">
-              Importar
-            </span>
-          </button>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {communityBooks.map((book) => (
+              <div
+                key={book.id}
+                className="bg-gray-800 rounded-lg overflow-hidden text-left w-full hover:ring-2 hover:ring-purple-500/50 transition-all duration-300 group"
+              >
+                <div className="aspect-[3/4] h-[180px] relative overflow-hidden">
+                  <img
+                    src={book.cover}
+                    alt={book.title}
+                    className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
+                  />
+                  
+                  {/* Votes badge */}
+                  <div className="absolute top-2 right-2 bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center">
+                    <Award className="w-3 h-3 mr-1" />
+                    {book.votes}
+                  </div>
+                </div>
+                
+                <div className="p-3">
+                  <h3 className="font-medium text-white text-sm mb-1 line-clamp-1">
+                    {book.title}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    {book.author}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

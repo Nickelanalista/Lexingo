@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Camera, Eye, EyeOff, Loader2, Key } from 'lucide-react';
+import { User, Mail, Camera, Eye, EyeOff, Loader2, Key, RefreshCw, LogOut } from 'lucide-react';
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -25,6 +26,7 @@ export default function ProfilePage() {
 
   const getProfile = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data, error } = await supabase
@@ -40,7 +42,15 @@ export default function ProfilePage() {
         
         setProfile(data);
         setName(userName);
-        setAvatarUrl(data.avatar_url);
+        
+        // Verificar si la URL del avatar existe y aplicar cache-busting
+        if (data.avatar_url) {
+          // Añadir timestamp para evitar problemas de caché
+          const timestamp = new Date().getTime();
+          setAvatarUrl(`${data.avatar_url}?t=${timestamp}`);
+        } else {
+          setAvatarUrl(null);
+        }
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -51,6 +61,7 @@ export default function ProfilePage() {
 
   const handleAvatarChange = async (e) => {
     try {
+      setError(null);
       const file = e.target.files[0];
       if (!file) return;
 
@@ -64,12 +75,63 @@ export default function ProfilePage() {
         throw new Error('Por favor selecciona una imagen');
       }
 
+      setUploadingAvatar(true);
+      
+      // Realizar la carga directamente al cambiar el archivo
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No user found');
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
+      
+      // Delete old avatar if exists
+      if (profile?.avatar_url) {
+        const oldFileName = profile.avatar_url.split('/').pop().split('?')[0]; // Remover parámetros de query
+        await supabase.storage
+          .from('avatars')
+          .remove([oldFileName]);
+      }
+
+      // Upload new avatar
+      const { error: uploadError, data } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+      
+      // Añadir timestamp para evitar problemas de caché
+      const timestamp = new Date().getTime();
+      const urlWithTimestamp = `${publicUrl}?t=${timestamp}`;
+
+      // Actualizar perfil con la nueva URL de avatar
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+      
+      // Actualizar la UI
       setAvatar(file);
-      // Create preview URL
-      const objectUrl = URL.createObjectURL(file);
-      setAvatarUrl(objectUrl);
+      setAvatarUrl(urlWithTimestamp);
+      setSuccess('Foto de perfil actualizada correctamente');
+      
+      // Refrescar el perfil
+      getProfile();
+      
     } catch (error) {
+      console.error('Error updating avatar:', error);
       setError(error.message);
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -83,41 +145,11 @@ export default function ProfilePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
-      // Upload avatar if selected
-      let avatar_url = profile?.avatar_url;
-      if (avatar) {
-        const fileExt = avatar.name.split('.').pop();
-        const fileName = `${user.id}.${fileExt}`;
-        
-        // Delete old avatar if exists
-        if (profile?.avatar_url) {
-          const oldFileName = profile.avatar_url.split('/').pop();
-          await supabase.storage
-            .from('avatars')
-            .remove([oldFileName]);
-        }
-
-        // Upload new avatar
-        const { error: uploadError, data } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, avatar, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(fileName);
-
-        avatar_url = publicUrl;
-      }
-
-      // Update profile
+      // Update profile (without avatar, since it's handled separately)
       const { error } = await supabase
         .from('profiles')
         .update({
           name,
-          avatar_url,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -217,23 +249,35 @@ export default function ProfilePage() {
           <div className="flex items-center space-x-6">
             <div className="relative">
               {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt="Avatar"
-                  className="w-20 h-20 rounded-full object-cover"
-                />
+                <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Si hay error al cargar la imagen, mostrar inicial
+                      e.target.style.display = 'none';
+                      console.error('Error loading avatar image');
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white text-2xl font-medium">
                   {name ? name[0].toUpperCase() : profile?.email[0].toUpperCase()}
                 </div>
               )}
               <label className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-2 cursor-pointer hover:bg-purple-700 transition-colors">
-                <Camera className="h-4 w-4 text-white" />
+                {uploadingAvatar ? (
+                  <RefreshCw className="h-4 w-4 text-white animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4 text-white" />
+                )}
                 <input
                   type="file"
                   className="hidden"
                   accept="image/*"
                   onChange={handleAvatarChange}
+                  disabled={uploadingAvatar}
                 />
               </label>
             </div>
@@ -409,6 +453,26 @@ export default function ProfilePage() {
               </form>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Cerrar sesión */}
+      <div className="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div className="p-6">
+          <button
+            onClick={async () => {
+              try {
+                const { error } = await supabase.auth.signOut();
+                if (error) throw error;
+              } catch (error) {
+                console.error('Error signing out:', error);
+              }
+            }}
+            className="flex items-center w-full justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Cerrar sesión
+          </button>
         </div>
       </div>
     </div>

@@ -39,7 +39,7 @@ const AppContent = () => {
         </Routes>
       </main>
 
-      <MobileNavigation />
+      {(!isReaderRoute || !isFullScreen) && <MobileNavigation />}
     </div>
   );
 };

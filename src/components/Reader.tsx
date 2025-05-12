@@ -16,12 +16,59 @@ interface ReaderProps {
 
 const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const navigate = useNavigate();
-  const { book, goToPage, pagesSkipped } = useBookContext();
+  const { book, setBook, goToPage, pagesSkipped, loadBookAndSkipEmptyPages } = useBookContext();
   const { fontSize, increaseFontSize, decreaseFontSize, theme, toggleTheme } = useThemeContext();
   const { translateParagraph } = useTranslator();
   
   // Estado para mostrar el mensaje de páginas omitidas
   const [showSkippedMessage, setShowSkippedMessage] = useState(false);
+  
+  // Cargar el último libro leído si no hay un libro seleccionado
+  useEffect(() => {
+    const fetchLastReadBook = async () => {
+      if (!book) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          
+          const { data, error } = await supabase
+            .from('books')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('last_read', { ascending: false })
+            .limit(1)
+            .single();
+            
+          if (error || !data) {
+            console.log('No se encontró un libro reciente o error:', error);
+            return;
+          }
+          
+          // Cargar el libro encontrado
+          const bookData = {
+            id: data.id,
+            title: data.title,
+            pages: JSON.parse(data.content),
+            currentPage: data.current_page || 1,
+            totalPages: data.total_pages,
+            coverUrl: data.cover_url,
+            lastRead: data.last_read,
+            bookmarked: data.bookmarked,
+            bookmark_page: data.bookmark_page,
+            bookmark_position: data.bookmark_position,
+            bookmark_updated_at: data.bookmark_updated_at
+          };
+          
+          loadBookAndSkipEmptyPages(bookData);
+          console.log('Libro reciente cargado automáticamente:', data.title);
+        } catch (error) {
+          console.error('Error al cargar el último libro leído:', error);
+        }
+      }
+    };
+    
+    fetchLastReadBook();
+  }, [book, loadBookAndSkipEmptyPages, setBook]);
   
   // Mostrar mensaje si se omitieron páginas, solo al abrir el libro inicialmente
   useEffect(() => {
@@ -44,7 +91,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         return () => clearTimeout(timer);
       }
     }
-  }, [book]); // Solo se ejecuta cuando el libro cambia, no en cada render o cambio de página
+  }, [book, pagesSkipped]); // Solo se ejecuta cuando el libro cambia, no en cada render o cambio de página
   
   // Nuevo estado para el menú del perfil
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -95,9 +142,11 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const helpTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSelectedWordRef = useRef<HTMLElement | null>(null);
+  const selectionMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Agregar un nuevo estado para rastrear el índice de la palabra seleccionada
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
+  const [showSelectionMessage, setShowSelectionMessage] = useState(true);
 
   // States for bookmark
   const [hasBookmark, setHasBookmark] = useState(false);
@@ -161,8 +210,23 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       setTranslatedText('');
       setIsSelectingTextRange(false);
       setShowTranslation(false);
+      
+      // Actualizar el progreso de lectura en la base de datos cuando cambia la página
+      if (book.id) {
+        updateReadingProgress(book.id, book.currentPage);
+      }
     }
   }, [book, book?.currentPage]);
+
+  // Guardar la última página leída al desmontar el componente
+  useEffect(() => {
+    return () => {
+      if (book && book.id) {
+        updateReadingProgress(book.id, book.currentPage);
+        console.log('Guardando progreso al salir del lector:', book.currentPage);
+      }
+    };
+  }, [book]);
 
   // Check if it's the first time opening the reader
   useEffect(() => {
@@ -255,6 +319,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         const end = Math.max(startWordIndex, index);
         const selectedRange = allWords.slice(start, end + 1).join(' ');
         setSelectedText(selectedRange);
+        
+        // Activar automáticamente la traducción
+        translateTextSelection(selectedRange);
       }
     } else {
       // Modo normal de traducción de palabra individual
@@ -272,12 +339,42 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords]);
 
+  // Función para traducir el texto seleccionado automáticamente
+  const translateTextSelection = async (text: string) => {
+    if (!text) return;
+    
+    setIsTranslating(true);
+    
+    try {
+      const result = await translateParagraph(text);
+      if (result && typeof result === 'object' && 'translated' in result) {
+        setTranslatedText(result.translated);
+        setShowTranslation(true);
+        
+        // Mostrar el mensaje de "Texto seleccionado" solo por 1.5 segundos
+        if (selectionMessageTimeoutRef.current) {
+          clearTimeout(selectionMessageTimeoutRef.current);
+        }
+        
+        setShowSelectionMessage(true);
+        selectionMessageTimeoutRef.current = setTimeout(() => {
+          setShowSelectionMessage(false);
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Error translating text:', error);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   // Iniciar el modo de selección de texto
   const startTextSelection = () => {
     setIsSelectingTextRange(true);
     setStartWordIndex(null);
     setEndWordIndex(null);
     setSelectedText('');
+    setShowSelectionMessage(true);
   };
 
   // Cancelar la selección de texto
@@ -286,25 +383,14 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     setStartWordIndex(null);
     setEndWordIndex(null);
     setSelectedText('');
-  };
-
-  // Traducir el texto seleccionado
-  const translateSelectedText = async () => {
-    if (!selectedText) return;
     
-    setIsTranslating(true);
-    
-    try {
-      const result = await translateParagraph(selectedText);
-      if (result && typeof result === 'object' && 'translated' in result) {
-        setTranslatedText(result.translated);
-        setShowTranslation(true);
-      }
-    } catch (error) {
-      console.error('Error translating text:', error);
-    } finally {
-      setIsTranslating(false);
+    // Limpiar el timeout del mensaje de selección
+    if (selectionMessageTimeoutRef.current) {
+      clearTimeout(selectionMessageTimeoutRef.current);
     }
+    
+    // Restablecer el estado del mensaje
+    setShowSelectionMessage(true);
   };
 
   // Reproducir audio de la traducción usando TTSService
@@ -368,50 +454,21 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
   // Actualizar el estado de pantalla completa y notificar al componente padre
   const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      readerRef.current?.requestFullscreen();
-      setIsFullScreen(true);
-      if (onFullScreenChange) {
-        onFullScreenChange(true);
-      }
+    // Usar nuestro propio modo "pantalla completa" en lugar del nativo
+    setIsFullScreen(!isFullScreen);
+    if (onFullScreenChange) {
+      onFullScreenChange(!isFullScreen);
+    }
       
-      // Ocultar la barra de navegación móvil en modo pantalla completa
-      const mobileNav = document.querySelector('.md\\:hidden.fixed.bottom-0');
-      if (mobileNav) {
-        mobileNav.classList.add('hidden');
-      }
-      
-      // Ajustar la posición de la barra de controles en modo pantalla completa
-      const controlsBar = document.querySelector('.reader-controls');
-      if (controlsBar) {
-        controlsBar.classList.add('fullscreen-controls');
-      }
-    } else {
-      document.exitFullscreen();
-      setIsFullScreen(false);
-      if (onFullScreenChange) {
-        onFullScreenChange(false);
-      }
-      
-      // Mostrar nuevamente la barra de navegación móvil
-      const mobileNav = document.querySelector('.md\\:hidden.fixed.bottom-0');
-      if (mobileNav) {
-        mobileNav.classList.remove('hidden');
-      }
-      
-      // Restaurar la posición original de la barra de controles
-      const controlsBar = document.querySelector('.reader-controls');
-      if (controlsBar) {
-        controlsBar.classList.remove('fullscreen-controls');
-      }
+    // Mostrar/ocultar las barras de navegación según corresponda
+    const mobileNav = document.querySelector('.md\\:hidden.fixed.bottom-0');
+    if (mobileNav) {
+      !isFullScreen ? mobileNav.classList.add('hidden') : mobileNav.classList.remove('hidden');
     }
   };
   
-  // Salir del modo pantalla completa y notificar al componente padre
+  // Salir del modo pantalla completa personalizado
   const exitFullScreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    }
     setIsFullScreen(false);
     if (onFullScreenChange) {
       onFullScreenChange(false);
@@ -421,12 +478,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     const mobileNav = document.querySelector('.md\\:hidden.fixed.bottom-0');
     if (mobileNav) {
       mobileNav.classList.remove('hidden');
-    }
-    
-    // Restaurar la posición original de la barra de controles
-    const controlsBar = document.querySelector('.reader-controls');
-    if (controlsBar) {
-      controlsBar.classList.remove('fullscreen-controls');
     }
   };
 
@@ -531,9 +582,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   return (
     <div
       ref={readerRef}
-      className={`min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-white flex flex-col ${isFullScreen ? 'fixed inset-0 z-50' : ''}`}
+      className={`min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-white flex flex-col ${isFullScreen ? 'reader-fullscreen' : ''}`}
       onMouseMove={() => setShowControls(true)}
     >
+      {/* Header principal - Solo visible cuando NO estamos en modo pantalla completa */}
+      {!isFullScreen && <div className="h-16"></div>}
+      
       {/* Mensaje de ayuda */}
       {showHelp && (
         <div className="fixed bottom-24 right-8 left-8 sm:left-auto sm:w-80 p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg shadow-lg border border-blue-200 dark:border-blue-800 z-50 animate-fade-in">
@@ -569,118 +623,80 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         </div>
       )}
       
-      {/* Header principal - Mostrar solo en móvil, ocultar en desktop */}
-      {!isFullScreen && (
-        <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16 items-center">
-              {/* Logo centrado */}
-              <div className="flex-1"></div>
-              <div className="flex items-center justify-center flex-1">
-                <img 
-                  src={theme === 'dark' ? '/img/lexingo_white.png' : '/img/lexingo_black.png'} 
-                  alt="Lexingo" 
-                  className="h-11"
-                />
-              </div>
-              
-              {/* Perfil de usuario */}
-              <div className="flex items-center space-x-4 flex-1 justify-end" ref={dropdownRef}>
-                <div className="relative">
-                  <button 
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
-                    className="focus:outline-none"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
-                      N
-                    </div>
-                  </button>
-                  
-                  {/* Dropdown Menu */}
-                  {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1">
-                      <button
-                        onClick={() => navigate('/')}
-                        className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                      >
-                        <LogOut size={16} className="mr-2" />
-                        Cerrar sesión
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Barra de navegación de lectura */}
-      <div className={`fixed ${!isFullScreen ? 'top-16' : 'top-0'} left-0 right-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm`}>
+      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
         <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between">
-          {isFullScreen ? (
-            <div className="flex items-center">
-              {/* Botón para salir de pantalla completa */}
+          {/* Botón izquierdo: volver o salir */}
+          <div className="w-1/3 flex justify-start">
+            {isFullScreen ? (
               <button
                 onClick={exitFullScreen}
-                className="p-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 mr-3"
+                className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
                 aria-label="Salir de pantalla completa"
               >
-                <ArrowLeft size={22} />
+                <ArrowLeft size={18} />
               </button>
-              <div className="text-gray-700 dark:text-gray-300 font-medium">
-                {book.title} <span className="text-sm opacity-70">({book.currentPage}/{book.totalPages})</span>
-              </div>
+            ) : (
+              <button
+                onClick={() => navigate('/books')}
+                className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                aria-label="Volver a la biblioteca"
+              >
+                <Home size={18} />
+              </button>
+            )}
+          </div>
+          
+          {/* Información central del libro */}
+          <div className="w-1/3 flex justify-center items-center">
+            <div className="text-center">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {book.currentPage} / {book.totalPages}
+              </span>
             </div>
-          ) : (
-            /* Botón de volver a la biblioteca */
-            <button
-              onClick={() => navigate('/books')}
-              className="p-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-              aria-label="Volver a la biblioteca"
-            >
-              <Home size={20} />
-            </button>
-          )}
+          </div>
 
           {/* Controles de tema y pantalla completa */}
-          <div className="flex items-center space-x-2">
+          <div className="w-1/3 flex justify-end items-center space-x-2">
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-full text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              className="p-1.5 rounded-full text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
               aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
             >
-              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
             <button
               onClick={toggleFullScreen}
-              className="p-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-              aria-label={isFullScreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label={isFullScreen ? 'Salir de modo inmersivo' : 'Modo inmersivo'}
             >
-              {isFullScreen ? <Minimize size={20} /> : <Maximize size={20} />}
+              {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           </div>
         </div>
       </div>
+      
+      {/* Línea divisoria */}
+      <div className={`fixed ${!isFullScreen ? 'md:top-[4.5rem] top-[4.5rem]' : 'top-12'} left-0 right-0 h-[1px] bg-gray-300/80 dark:bg-gray-600/80 z-[39]`}></div>
 
       {/* Indicador de modo selección */}
-      {isSelectingTextRange && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-30 animate-fadeIn">
+      {isSelectingTextRange && showSelectionMessage && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[500] animate-fadeIn">
           <div className="bg-purple-600/90 text-white py-2 px-5 rounded-full shadow-lg flex items-center space-x-2 max-w-[250px] text-center">
             {startWordIndex === null ? (
               <>
                 <div className="flex-shrink-0 w-4 h-4 rounded-full bg-white animate-pulse"></div>
-                <span className="text-sm">Selecciona la palabra inicial</span>
+                <span className="text-sm font-medium">Selecciona la palabra inicial</span>
               </>
             ) : endWordIndex === null ? (
               <>
                 <div className="flex-shrink-0 w-4 h-4 rounded-full bg-white animate-pulse"></div>
-                <span className="text-sm">Ahora selecciona la palabra final</span>
+                <span className="text-sm font-medium">Ahora selecciona la palabra final</span>
               </>
             ) : (
               <>
                 <div className="flex-shrink-0 w-4 h-4 rounded-full bg-green-400"></div>
-                <span className="text-sm">Texto seleccionado</span>
+                <span className="text-sm font-medium">Texto seleccionado</span>
               </>
             )}
           </div>
@@ -700,21 +716,21 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       <div 
         className={`flex-grow overflow-y-auto p-4 ${
           !isFullScreen 
-            ? 'pt-32 pb-44 md:pt-24 md:mt-16 md:pb-28' // Aumentar espacio en la parte inferior para evitar que el contenido sobrepase el menú
-            : 'pt-16 pb-32'
-        } mt-4`} 
+            ? 'pt-6 pb-32 md:pt-4 md:pb-36' // Reducir el padding superior para tener menos espacio
+            : 'pt-4 pb-16'
+        }`} 
         ref={contentRef}
       >
         <div 
-          className="max-w-3xl mx-auto text-justify"
+          className="max-w-3xl mx-auto text-justify px-2"
           style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
         >
           {allWords.map((word, idx) => (
             <React.Fragment key={`${word}-${idx}`}>
               <span
                 className={`
-                  word inline-block cursor-pointer px-1.5 py-0.5 rounded transition-colors 
-                  border mx-0.5 
+                  word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
+                  border mx-[2px] 
                   ${isSelectingTextRange 
                     ? startWordIndex === idx 
                       ? 'bg-purple-600 text-white border-purple-700'
@@ -739,13 +755,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         
       {/* Barra de control inferior fija */}
       <div className="reader-controls fixed bottom-[56px] sm:bottom-16 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 p-2 z-[100] transition-opacity duration-300 shadow-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between px-4">
+        <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-1">
           {/* Botones de utilidad */}
           <div className="flex items-center">
             {/* Botón de marcador - unificado para guardar/ir al marcador */}
             <button
               onClick={hasBookmark ? goToBookmark : saveBookmark}
-              className="p-2 rounded-md text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
+              className="p-1.5 rounded-md text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
               title={hasBookmark ? "Ir al marcador guardado" : "Guardar marcador"}
             >
               {hasBookmark ? (
@@ -762,30 +778,16 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               </div>
             )}
             
-            {/* Botón de traducción de párrafo */}
-            {isSelectingTextRange && endWordIndex !== null ? (
-              <button
-                onClick={translateSelectedText}
-                className="ml-2 px-3 py-1.5 rounded-md bg-purple-600 text-white hover:bg-purple-700 flex items-center"
-                title="Traducir selección"
-              >
-                {isTranslating ? (
-                  <div className="mr-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Languages size={16} className="mr-2" />
-                )}
-                Traducir
-              </button>
-            ) : (
-              <button
-                onClick={startTextSelection}
-                className={`ml-2 p-2 rounded-md text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300 flex items-center ${isSelectingTextRange ? 'bg-purple-100 dark:bg-purple-900/30' : ''}`}
-                title="Seleccionar texto para traducir"
-                disabled={isSelectingTextRange}
-              >
-                <Languages size={20} />
-              </button>
-            )}
+            {/* Botón de traducción de texto */}
+            <button
+              onClick={isSelectingTextRange ? cancelTextSelection : startTextSelection}
+              className={`ml-2 p-1.5 rounded-md ${isSelectingTextRange 
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' 
+                : 'text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300'} flex items-center`}
+              title={isSelectingTextRange ? "Cancelar selección" : "Seleccionar texto para traducir"}
+            >
+              <Languages size={18} />
+            </button>
           </div>
           
           {/* Sección de navegación */}
@@ -793,9 +795,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             <button
               onClick={handlePreviousPage}
               disabled={book.currentPage <= 1}
-              className="p-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="p-1.5 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={18} />
             </button>
             <span className="mx-2 text-sm text-gray-700 dark:text-gray-300 font-medium">
               {book.currentPage} / {book.totalPages}
@@ -803,9 +805,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             <button
               onClick={handleNextPage}
               disabled={book.currentPage >= book.totalPages}
-              className="p-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="p-1.5 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
             >
-              <ArrowRight size={20} />
+              <ArrowRight size={18} />
             </button>
           </div>
           
@@ -814,7 +816,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             <button
               onClick={decreaseFontSize}
               disabled={fontSize <= 12}
-              className="p-2 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="Reducir tamaño de fuente"
             >
               <Minus size={16} />
@@ -823,7 +825,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             <button
               onClick={increaseFontSize}
               disabled={fontSize >= 24}
-              className="p-2 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="Aumentar tamaño de fuente"
             >
               <Plus size={16} />
@@ -831,7 +833,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           </div>
         </div>
       </div>
-      
+
       {/* WordTooltip para mostrar traducciones de palabras individuales */}
       <WordTooltip
         word={selectedWord}
@@ -850,17 +852,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             top: '50%', 
             left: '50%', 
             transform: 'translate(-50%, -50%)',
-            margin: 0
+            margin: 0,
+            zIndex: 9999
           }}
-          className="z-50 shadow-xl bg-gray-900 dark:bg-gray-800 text-white rounded-md max-w-md w-[90vw] sm:w-auto"
+          className="z-[9999] shadow-xl bg-gray-900 dark:bg-gray-800 text-white rounded-lg max-w-md w-[90vw] sm:w-auto"
           onClick={e => e.stopPropagation()}
         >
           {/* Encabezado */}
-          <div className="flex justify-between items-center bg-gray-800 dark:bg-gray-700 px-4 py-2 rounded-t-md">
-            <div className="text-sm text-gray-300">Inglés</div>
+          <div className="flex justify-between items-center bg-gradient-to-r from-purple-900 to-blue-900 px-4 py-3 rounded-t-lg">
+            <div className="text-sm text-gray-100 font-medium">Texto original</div>
             <button
               onClick={closeTranslation}
-              className="text-gray-400 hover:text-white"
+              className="text-gray-300 hover:text-white focus:outline-none"
               aria-label="Cerrar"
             >
               <X size={16} />
@@ -871,7 +874,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           <div className="p-4">
             {/* Texto original */}
             <div className="mb-4">
-              <p className="font-medium mb-1 text-gray-300 text-sm">
+              <p className="font-medium mb-1 text-gray-200 text-sm">
                 {selectedText}
               </p>
             </div>
@@ -882,13 +885,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             {/* Texto traducido */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-300">Español</div>
+                <div className="text-sm text-purple-300 font-medium">Traducción</div>
                 {isTranslating && (
                   <Loader2 className="animate-spin h-4 w-4 text-blue-500" />
                 )}
               </div>
               
-              <p className="font-medium text-blue-400">
+              <p className="font-medium text-blue-300">
                 {translatedText}
               </p>
               
@@ -896,7 +899,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               <div className="flex justify-end space-x-2 mt-3">
                 <button
                   onClick={isPlayingAudio === 'en' ? stopAudio : () => playTranslationAudio('en')}
-                  className={`flex items-center space-x-1 px-2 py-1 ${isPlayingAudio === 'en' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded-sm text-xs`}
+                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'en' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded text-xs`}
                 >
                   <span>{isPlayingAudio === 'en' ? "Detener" : "Inglés"}</span>
                   {isPlayingAudio === 'en' ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -904,7 +907,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                 
                 <button
                   onClick={isPlayingAudio === 'es' ? stopAudio : () => playTranslationAudio('es')}
-                  className={`flex items-center space-x-1 px-2 py-1 ${isPlayingAudio === 'es' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-blue-900/50 hover:bg-blue-800'} rounded-sm text-xs`}
+                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'es' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-blue-900/50 hover:bg-blue-800'} rounded text-xs`}
                   disabled={isPlayingAudio === 'en'}
                 >
                   <span>{isPlayingAudio === 'es' ? "Detener" : "Español"}</span>
@@ -915,7 +918,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           </div>
         </div>
       )}
-      
+
       {/* Estilos de scrollbar y animaciones */}
       <style jsx>{`
         @keyframes fadeIn {
@@ -938,37 +941,36 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         .reader-fullscreen::-webkit-scrollbar-thumb:hover {
           background: rgba(107, 114, 128, 0.5);
         }
-        /* Ajuste para dispositivos móviles */
-        @media screen and (max-width: 768px) {
+        .reader-fullscreen {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 100;
+        }
+        /* Asegurar que la barra de controles esté por encima de la navegación */
+        .reader-controls {
+          bottom: 56px !important;
+          width: 100% !important;
+          left: 0 !important;
+          right: 0 !important;
+        }
+        /* Ajustes para pantallas más grandes */
+        @media screen and (min-width: 640px) {
           .reader-controls {
-            bottom: 56px; /* Posiciona la barra por encima de la barra de navegación */
+            bottom: 0 !important;
+            padding-bottom: 16px !important;
           }
         }
-        /* Para dispositivos con pantallas más pequeñas */
+        /* Para pantallas pequeñas */
         @media screen and (max-height: 500px) {
           .reader-controls {
-            position: fixed;
-            bottom: 56px;
-            z-index: 100;
+            padding-bottom: 0;
           }
         }
-        /* Ajustes específicos para vista web */
-        @media screen and (min-width: 768px) {
-          .reader-controls {
-            bottom: 0; /* En versión web, fijamos al fondo */
-          }
-        }
-        /* Ajuste para modo pantalla completa */
-        .fullscreen-controls {
-          bottom: 0 !important;
-        }
-        :fullscreen .reader-controls {
-          bottom: 0 !important;
-        }
-        :-webkit-full-screen .reader-controls {
-          bottom: 0 !important;
-        }
-        :-moz-full-screen .reader-controls {
+        /* Ajuste para el modo pantalla completa */
+        .reader-fullscreen .reader-controls {
           bottom: 0 !important;
         }
       `}</style>
