@@ -77,12 +77,12 @@ export default function BooksPage() {
       // Indicar que estamos cargando
       setLoading(true);
       
-      // Forzar que comience siempre en la página 1 para detectar las páginas vacías
+      // Usar la página actual guardada en la base de datos
       const bookData = {
         id: book.id,
         title: book.title,
         pages: JSON.parse(book.content),
-        currentPage: 1, // Forzar a página 1 para que la lógica de omitir páginas funcione
+        currentPage: book.current_page || 1, // Usar la página guardada en lugar de forzar página 1
         totalPages: book.total_pages,
         coverUrl: book.cover_url,
         lastRead: book.last_read,
@@ -99,12 +99,7 @@ export default function BooksPage() {
         localStorage.removeItem(`book_${bookId}_message_shown`);
       }
       
-      // Si el usuario estaba en una página avanzada, la guardamos en localStorage
-      if (book.current_page > 1) {
-        localStorage.setItem(`book_${book.id}_lastPage`, book.current_page.toString());
-      }
-      
-      // Cargar el libro y aplicar la lógica para saltar páginas vacías
+      // Cargar el libro manteniendo la página actual
       loadBookAndSkipEmptyPages(bookData);
       
       // Navegar hacia la página de lectura
@@ -130,7 +125,7 @@ export default function BooksPage() {
   }
 
   return (
-    <div className="container mx-auto px-4">
+    <div className="container mx-auto px-4 max-w-5xl">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         Mis Libros
       </h1>
@@ -144,7 +139,7 @@ export default function BooksPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {books.map((book) => (
             <div
               key={book.id}

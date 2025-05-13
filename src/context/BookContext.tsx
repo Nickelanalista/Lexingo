@@ -89,63 +89,40 @@ export const BookProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    console.log('Cargando libro y buscando primera página no vacía...');
+    console.log('Cargando libro con página actual:', bookData.currentPage);
     
-    // Encontrar la primera página no vacía
-    const firstNonEmptyPage = findFirstNonEmptyPage(bookData.pages);
-    console.log(`Página actual del libro: ${bookData.currentPage}, Primera página no vacía: ${firstNonEmptyPage}`);
-    
-    // Calcular cuántas páginas se omitieron
-    const skipped = firstNonEmptyPage - 1;
-    
-    // Solo establecer las páginas omitidas si es una carga inicial (currentPage=1)
-    // Esto evita que se muestre el mensaje al cambiar de páginas
+    // Si es la primera vez que se abre el libro (página 1), buscar la primera página no vacía
+    // En caso contrario, respetar la página guardada en la BD
     if (bookData.currentPage === 1) {
+      console.log('Primera carga del libro, buscando primera página no vacía...');
+      // Encontrar la primera página no vacía
+      const firstNonEmptyPage = findFirstNonEmptyPage(bookData.pages);
+      console.log(`Primera página no vacía: ${firstNonEmptyPage}`);
+      
+      // Calcular cuántas páginas se omitieron
+      const skipped = firstNonEmptyPage - 1;
       setPagesSkipped(skipped > 0 ? skipped : 0);
-    } else {
-      setPagesSkipped(0); // No mostrar mensaje si no es carga inicial
-    }
-    
-    // Verificar si hay una página guardada en localStorage
-    let lastSavedPage = 1;
-    try {
-      // Intentar extraer el ID del libro desde el título (solución temporal)
-      const potentialBookId = bookData.title.replace(/\s+/g, '_').toLowerCase();
-      const savedPage = localStorage.getItem(`book_${potentialBookId}_lastPage`);
-      if (savedPage) {
-        lastSavedPage = parseInt(savedPage, 10);
-        console.log(`Página guardada encontrada: ${lastSavedPage}`);
+      
+      // Determinar la página de inicio
+      let startPage = firstNonEmptyPage;
+      
+      // Verificar si hay un marcador guardado en Supabase
+      if (bookData.bookmarked && bookData.bookmark_page) {
+        startPage = bookData.bookmark_page;
+        console.log(`Usando página de marcador: ${startPage}`);
       }
-    } catch (error) {
-      console.error('Error al recuperar la página guardada:', error);
+      
+      // Actualizar el libro con la página inicial correcta
+      setBook({
+        ...bookData,
+        currentPage: startPage
+      });
+    } else {
+      // El libro ya tiene una página guardada, la respetamos
+      console.log(`Respetando página guardada: ${bookData.currentPage}`);
+      setPagesSkipped(0); // No mostrar mensaje de páginas omitidas
+      setBook(bookData);
     }
-    
-    // Determinar la página de inicio, priorizando la página guardada si existe
-    let startPage = firstNonEmptyPage;
-    
-    // Verificar si hay un marcador guardado en Supabase
-    if (bookData.bookmarked && bookData.bookmark_page) {
-      startPage = bookData.bookmark_page;
-      console.log(`Usando página de marcador: ${startPage}`);
-    }
-    // Si hay una página guardada en localStorage y es mayor que la primera no vacía, usarla
-    else if (lastSavedPage > firstNonEmptyPage) {
-      startPage = lastSavedPage;
-      console.log(`Usando página guardada en localStorage: ${startPage}`);
-    } 
-    // Si la página actual del libro es mayor que la primera no vacía, usarla
-    else if (bookData.currentPage > firstNonEmptyPage) {
-      startPage = bookData.currentPage;
-      console.log(`Usando página actual del libro: ${startPage}`);
-    }
-    
-    console.log(`Estableciendo página inicial en: ${startPage}`);
-    
-    // Actualizar el libro con la página inicial correcta
-    setBook({
-      ...bookData,
-      currentPage: startPage
-    });
   };
 
   // Función para actualizar el progreso de lectura en Supabase

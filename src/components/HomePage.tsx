@@ -6,7 +6,7 @@ import { useBookContext } from '../context/BookContext';
 import FileUploader from './PDFUploader';
 
 export default function HomePage() {
-  const [recentBooks, setRecentBooks] = useState([]);
+  const [recentBooks, setRecentBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [communityBooks, setCommunityBooks] = useState([
     {
@@ -39,7 +39,7 @@ export default function HomePage() {
     }
   ]);
   const navigate = useNavigate();
-  const { setBook } = useBookContext();
+  const { setBook, loadBookAndSkipEmptyPages } = useBookContext();
 
   useEffect(() => {
     fetchRecentBooks();
@@ -74,15 +74,20 @@ export default function HomePage() {
       }
 
       const bookData = {
+        id: book.id,
         title: book.title,
         pages: parsedContent,
         currentPage: book.current_page || 1,
         totalPages: book.total_pages || parsedContent.length,
         coverUrl: book.cover_url,
-        lastRead: book.last_read
+        lastRead: book.last_read,
+        bookmarked: book.bookmarked,
+        bookmark_page: book.bookmark_page,
+        bookmark_position: book.bookmark_position,
+        bookmark_updated_at: book.bookmark_updated_at
       };
       
-      setBook(bookData);
+      loadBookAndSkipEmptyPages(bookData);
       navigate('/reader');
     } catch (error) {
       console.error('Error opening book:', error);
@@ -91,7 +96,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-900 overflow-y-auto">
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Welcome Section */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-white">
@@ -106,7 +111,7 @@ export default function HomePage() {
         </div>
 
         {/* Recent Books Section */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Clock className="w-4 h-4 mr-2 text-purple-500" />
@@ -129,7 +134,7 @@ export default function HomePage() {
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-purple-500 border-t-transparent" />
             </div>
           ) : recentBooks.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {recentBooks.slice(0, 4).map((book) => (
                 <button
                   key={book.id}
@@ -184,8 +189,8 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Upload Section - Rediseñado */}
-        <div className="space-y-4">
+        {/* Upload Section */}
+        <div className="space-y-3">
           <div className="flex items-center mb-4">
             <Plus className="w-4 h-4 mr-2 text-purple-500" />
             <h2 className="text-lg font-medium text-white">
@@ -210,7 +215,7 @@ export default function HomePage() {
         </div>
 
         {/* Community Books Section */}
-        <div className="space-y-4 pb-12">
+        <div className="space-y-3 pb-12">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Award className="w-4 h-4 mr-2 text-purple-500" />
@@ -226,7 +231,7 @@ export default function HomePage() {
             </button>
           </div>
           
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {communityBooks.map((book) => (
               <div
                 key={book.id}
