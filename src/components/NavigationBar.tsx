@@ -127,76 +127,84 @@ const NavigationBar: React.FC = () => {
     <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
+          {/* Sección izquierda: logo en web y navegación */}
           <div className="flex items-center">
-            <img src={logoSrc} alt="Lexingo" className="h-11" />
-            {/* <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">Lexingo</span> */}
+            {/* Logo en web */}
+            <div className="hidden md:block mr-8">
+              <img src={logoSrc} alt="Lexingo" className="h-11" />
+            </div>
+            
+            {/* Navegación desktop */}
+            <nav className="hidden md:flex space-x-8">
+              <Link
+                to="/"
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive('/') 
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20' 
+                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
+                }`}
+              >
+                <Home size={18} />
+                <span>Inicio</span>
+              </Link>
+              
+              <Link
+                to="/books"
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive('/books')
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
+                }`}
+              >
+                <Library size={18} />
+                <span>Mis Libros</span>
+              </Link>
+              
+              <Link
+                to="/reader"
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive('/reader')
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
+                }`}
+              >
+                <BookOpen size={18} />
+                <span>Lectura</span>
+              </Link>
+              
+              <Link
+                to="/profile"
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive('/profile')
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
+                }`}
+              >
+                <User size={18} />
+                <span>Mi Cuenta</span>
+              </Link>
+              
+              <Link
+                to="/settings"
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive('/settings')
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
+                }`}
+              >
+                <Settings size={18} />
+                <span>Configuración</span>
+              </Link>
+            </nav>
           </div>
 
-          {/* Navigation Menu */}
-          <nav className="hidden md:flex space-x-8">
-            <Link
-              to="/"
-              className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/') 
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20' 
-                  : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-              }`}
-            >
-              <Home size={18} />
-              <span>Inicio</span>
-            </Link>
-            
-            <Link
-              to="/books"
-              className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/books')
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-              }`}
-            >
-              <Library size={18} />
-              <span>Mis Libros</span>
-            </Link>
-            
-            <Link
-              to="/reader"
-              className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/reader')
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-              }`}
-            >
-              <BookOpen size={18} />
-              <span>Lectura</span>
-            </Link>
-            
-            <Link
-              to="/profile"
-              className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/profile')
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-              }`}
-            >
-              <User size={18} />
-              <span>Mi Cuenta</span>
-            </Link>
-            
-            <Link
-              to="/settings"
-              className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/settings')
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-              }`}
-            >
-              <Settings size={18} />
-              <span>Configuración</span>
-            </Link>
-          </nav>
+          {/* Logo centrado solo en móvil */}
+          <div className="md:hidden flex items-center justify-center">
+            <img src={logoSrc} alt="Lexingo" className="h-11" />
+          </div>
 
-          {/* User Profile */}
-          <div className="flex items-center space-x-4" ref={dropdownRef}>
+          {/* Perfil de usuario - siempre a la derecha */}
+          <div className="flex items-center" ref={dropdownRef}>
             <div className="relative">
               <button 
                 onClick={() => setDropdownOpen(!dropdownOpen)}

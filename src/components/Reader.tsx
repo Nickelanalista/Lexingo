@@ -16,7 +16,7 @@ interface ReaderProps {
 
 const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const navigate = useNavigate();
-  const { book, setBook, goToPage, pagesSkipped, loadBookAndSkipEmptyPages } = useBookContext();
+  const { book, setBook, goToPage, pagesSkipped, loadBookAndSkipEmptyPages, updateReadingProgress } = useBookContext();
   const { fontSize, increaseFontSize, decreaseFontSize, theme, toggleTheme } = useThemeContext();
   const { translateParagraph } = useTranslator();
   
@@ -647,6 +647,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             )}
           </div>
           
+          {/* Línea divisoria vertical */}
+          <div className="hidden sm:block h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
+          
           {/* Información central del libro */}
           <div className="w-1/3 flex justify-center items-center">
             <div className="text-center">
@@ -655,6 +658,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               </span>
             </div>
           </div>
+
+          {/* Línea divisoria vertical */}
+          <div className="hidden sm:block h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
 
           {/* Controles de tema y pantalla completa */}
           <div className="w-1/3 flex justify-end items-center space-x-2">
@@ -771,6 +777,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               )}
             </button>
             
+            {/* Línea divisoria vertical */}
+            <div className="h-5 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
+            
             {/* Mensaje de confirmación de guardado */}
             {saveConfirmation && (
               <div className="absolute -top-10 left-0 bg-green-600 text-white py-1 px-3 rounded-md text-sm animate-fade-in">
@@ -781,7 +790,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             {/* Botón de traducción de texto */}
             <button
               onClick={isSelectingTextRange ? cancelTextSelection : startTextSelection}
-              className={`ml-2 p-1.5 rounded-md ${isSelectingTextRange 
+              className={`p-1.5 rounded-md ${isSelectingTextRange 
                 ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' 
                 : 'text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300'} flex items-center`}
               title={isSelectingTextRange ? "Cancelar selección" : "Seleccionar texto para traducir"}
@@ -789,6 +798,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               <Languages size={18} />
             </button>
           </div>
+          
+          {/* Línea divisoria vertical */}
+          <div className="h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
           
           {/* Sección de navegación */}
           <div className="flex items-center">
@@ -810,6 +822,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               <ArrowRight size={18} />
             </button>
           </div>
+          
+          {/* Línea divisoria vertical */}
+          <div className="h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
           
           {/* Sección de zoom */}
           <div className="flex items-center">

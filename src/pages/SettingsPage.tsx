@@ -19,7 +19,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto px-5 pb-24">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         Configuración
       </h1>
@@ -95,9 +95,9 @@ export default function SettingsPage() {
         <div className="border-t border-gray-200 dark:border-gray-700 p-6">
           <button
             onClick={handleSignOut}
-            className="flex items-center w-full justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            className="flex items-center w-full justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
           >
-            <LogOut className="mr-2 h-4 w-4" />
+            <LogOut className="mr-2 h-5 w-5" />
             Cerrar sesión
           </button>
         </div>

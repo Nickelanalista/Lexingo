@@ -8,6 +8,7 @@ export default function ProfilePage() {
   const [updating, setUpdating] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [name, setName] = useState('');
+  const [originalName, setOriginalName] = useState('');
   const [avatar, setAvatar] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -19,10 +20,19 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
     getProfile();
   }, []);
+
+  useEffect(() => {
+    if (originalName !== '' && name !== originalName) {
+      setHasChanges(true);
+    } else {
+      setHasChanges(false);
+    }
+  }, [name, originalName]);
 
   const getProfile = async () => {
     try {
@@ -42,6 +52,7 @@ export default function ProfilePage() {
         
         setProfile(data);
         setName(userName);
+        setOriginalName(userName);
         
         // Verificar si la URL del avatar existe y aplicar cache-busting
         if (data.avatar_url) {
@@ -163,6 +174,7 @@ export default function ProfilePage() {
 
       setSuccess('Perfil actualizado correctamente');
       getProfile();
+      setHasChanges(false);
     } catch (error) {
       console.error('Error updating profile:', error);
       setError(error.message);
@@ -224,7 +236,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto px-5 pb-24">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         Mi Perfil
       </h1>
@@ -243,7 +255,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden mb-8">
         <form onSubmit={updateProfile} className="p-6 space-y-6">
           {/* Avatar Section */}
           <div className="flex items-center space-x-6">
@@ -318,20 +330,22 @@ export default function ProfilePage() {
             />
           </div>
 
-          {/* Submit Button */}
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={updating}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {updating ? (
-                <Loader2 className="animate-spin h-5 w-5" />
-              ) : (
-                'Guardar cambios'
-              )}
-            </button>
-          </div>
+          {/* Submit Button - Solo se muestra si hay cambios */}
+          {hasChanges && (
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={updating}
+                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {updating ? (
+                  <Loader2 className="animate-spin h-5 w-5" />
+                ) : (
+                  'Guardar cambios'
+                )}
+              </button>
+            </div>
+          )}
         </form>
 
         {/* Password Change Section */}
@@ -468,9 +482,9 @@ export default function ProfilePage() {
                 console.error('Error signing out:', error);
               }
             }}
-            className="flex items-center w-full justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
           >
-            <LogOut className="mr-2 h-4 w-4" />
+            <LogOut className="mr-2 h-5 w-5" />
             Cerrar sesión
           </button>
         </div>
