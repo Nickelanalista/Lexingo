@@ -262,16 +262,16 @@ export default function ProfilePage() {
             <div className="relative">
               {avatarUrl ? (
                 <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
-                  <img
-                    src={avatarUrl}
-                    alt="Avatar"
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       // Si hay error al cargar la imagen, mostrar inicial
                       e.target.style.display = 'none';
                       console.error('Error loading avatar image');
                     }}
-                  />
+                />
                 </div>
               ) : (
                 <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white text-2xl font-medium">
@@ -282,7 +282,7 @@ export default function ProfilePage() {
                 {uploadingAvatar ? (
                   <RefreshCw className="h-4 w-4 text-white animate-spin" />
                 ) : (
-                  <Camera className="h-4 w-4 text-white" />
+                <Camera className="h-4 w-4 text-white" />
                 )}
                 <input
                   type="file"
@@ -332,19 +332,19 @@ export default function ProfilePage() {
 
           {/* Submit Button - Solo se muestra si hay cambios */}
           {hasChanges && (
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={updating}
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {updating ? (
-                  <Loader2 className="animate-spin h-5 w-5" />
-                ) : (
-                  'Guardar cambios'
-                )}
-              </button>
-            </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={updating}
+              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {updating ? (
+                <Loader2 className="animate-spin h-5 w-5" />
+              ) : (
+                'Guardar cambios'
+              )}
+            </button>
+          </div>
           )}
         </form>
 

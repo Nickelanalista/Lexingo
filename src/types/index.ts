@@ -26,6 +26,11 @@ export interface Book {
   bookmark_page?: number;
   bookmark_position?: number;
   bookmark_updated_at?: string;
+  processedWithOcr?: boolean;
+  ocrInProgress?: boolean;
+  ocrProgress?: number;
+  ocrTotal?: number;
+  ocrError?: boolean;
 }
 
 export interface OpenAIResponse {

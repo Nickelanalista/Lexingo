@@ -125,17 +125,17 @@ const NavigationBar: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
-          {/* Sección izquierda: logo en web y navegación */}
-          <div className="flex items-center">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-center h-16 items-center">
+          {/* Contenedor principal con flex centrado */}
+          <div className="flex-1 flex items-center justify-between max-w-5xl">
             {/* Logo en web */}
-            <div className="hidden md:block mr-8">
+            <div className="hidden md:flex items-center">
               <img src={logoSrc} alt="Lexingo" className="h-11" />
             </div>
-            
-            {/* Navegación desktop */}
-            <nav className="hidden md:flex space-x-8">
+
+            {/* Navegación desktop - centrada */}
+            <nav className="hidden md:flex items-center space-x-4">
               <Link
                 to="/"
                 className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
@@ -196,58 +196,58 @@ const NavigationBar: React.FC = () => {
                 <span>Configuración</span>
               </Link>
             </nav>
-          </div>
 
-          {/* Logo centrado solo en móvil */}
-          <div className="md:hidden flex items-center justify-center">
-            <img src={logoSrc} alt="Lexingo" className="h-11" />
-          </div>
+            {/* Logo centrado solo en móvil */}
+            <div className="md:hidden flex items-center justify-center">
+              <img src={logoSrc} alt="Lexingo" className="h-11" />
+            </div>
 
-          {/* Perfil de usuario - siempre a la derecha */}
-          <div className="flex items-center" ref={dropdownRef}>
-            <div className="relative">
-              <button 
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="focus:outline-none"
-              >
-                {loading ? (
-                  <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                ) : avatarUrl ? (
-                  <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-800">
-                    <img
-                      src={avatarUrl}
-                      alt={profile?.name || 'Usuario'}
-                      className="w-full h-full object-cover"
-                      onError={handleAvatarError}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
-                    {getInitials(profile?.name)}
+            {/* Perfil de usuario */}
+            <div className="flex items-center" ref={dropdownRef}>
+              <div className="relative">
+                <button 
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="focus:outline-none"
+                >
+                  {loading ? (
+                    <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                  ) : avatarUrl ? (
+                    <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-800">
+                      <img
+                        src={avatarUrl}
+                        alt={profile?.name || 'Usuario'}
+                        className="w-full h-full object-cover"
+                        onError={handleAvatarError}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
+                      {getInitials(profile?.name)}
+                    </div>
+                  )}
+                </button>
+                
+                {/* Dropdown Menu */}
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
+                    <Link 
+                      to="/profile"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <User size={16} className="mr-2" />
+                      Mi Perfil
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                    >
+                      <LogOut size={16} className="mr-2" />
+                      Cerrar sesión
+                    </button>
                   </div>
                 )}
-              </button>
-              
-              {/* Dropdown Menu */}
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
-                  <Link 
-                    to="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                    onClick={() => setDropdownOpen(false)}
-                  >
-                    <User size={16} className="mr-2" />
-                    Mi Perfil
-                  </Link>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <LogOut size={16} className="mr-2" />
-                    Cerrar sesión
-                  </button>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>

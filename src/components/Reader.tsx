@@ -70,6 +70,32 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     fetchLastReadBook();
   }, [book, loadBookAndSkipEmptyPages, setBook]);
   
+  // Preservar la página actual cuando se actualiza el libro por OCR
+  const prevBookRef = useRef<Book | null>(null);
+  
+  useEffect(() => {
+    // Si el libro se está actualizando durante el OCR, preservar la página actual
+    if (book && prevBookRef.current && 
+        book.id === prevBookRef.current.id && 
+        book.ocrInProgress && 
+        prevBookRef.current.currentPage !== book.currentPage) {
+      
+      // Solo actualizar si la página actual ha cambiado a 1 (reinicio no deseado)
+      if (book.currentPage === 1 && prevBookRef.current.currentPage > 1) {
+        console.log(`Restaurando página actual: ${prevBookRef.current.currentPage} (evitando reinicio por OCR)`);
+        
+        // Restaurar la página actual previa
+        setBook({
+          ...book,
+          currentPage: prevBookRef.current.currentPage
+        });
+      }
+    }
+    
+    // Guardar referencia del libro actual para la próxima actualización
+    prevBookRef.current = book;
+  }, [book, setBook]);
+  
   // Mostrar mensaje si se omitieron páginas, solo al abrir el libro inicialmente
   useEffect(() => {
     if (book && pagesSkipped > 0) {
@@ -325,17 +351,17 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       }
     } else {
       // Modo normal de traducción de palabra individual
-      if (word.text.trim() === '') return;
-      
-      setSelectedWord(word.text);
+    if (word.text.trim() === '') return;
+    
+    setSelectedWord(word.text);
       setSelectedWordIndex(index); // Guardar el índice de la palabra seleccionada
-      setTooltipAnchor(event.currentTarget);
-      setIsTooltipOpen(true);
-      setShowControls(true);
-      
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
+    setTooltipAnchor(event.currentTarget);
+    setIsTooltipOpen(true);
+    setShowControls(true);
+    
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
     }
   }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords]);
 
@@ -350,7 +376,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       if (result && typeof result === 'object' && 'translated' in result) {
         setTranslatedText(result.translated);
         setShowTranslation(true);
-        
+      
         // Mostrar el mensaje de "Texto seleccionado" solo por 1.5 segundos
         if (selectionMessageTimeoutRef.current) {
           clearTimeout(selectionMessageTimeoutRef.current);
@@ -436,9 +462,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       // Reiniciar el temporizador si ya existe
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
-      }
-    };
-    
+    }
+  };
+
     // Agregar event listener para el scroll
     if (contentRef.current) {
       contentRef.current.addEventListener('scroll', handleScroll);
@@ -469,7 +495,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   
   // Salir del modo pantalla completa personalizado
   const exitFullScreen = () => {
-    setIsFullScreen(false);
+      setIsFullScreen(false);
     if (onFullScreenChange) {
       onFullScreenChange(false);
     }
@@ -559,6 +585,126 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   };
 
+  // Agregar un indicador visual de OCR en la parte superior del lector
+  const OcrIndicator = ({ isVisible }: { isVisible: boolean }) => {
+    if (!isVisible) return null;
+    
+    return (
+      <div className="bg-purple-100 dark:bg-purple-900/30 border-l-4 border-purple-500 p-2 mb-4 text-sm text-purple-700 dark:text-purple-300 flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Este documento ha sido procesado con OCR para mejorar la legibilidad.
+      </div>
+    );
+  };
+
+  // Agregar un nuevo estado para controlar si el indicador de OCR está minimizado
+  const [ocrIndicatorMinimized, setOcrIndicatorMinimized] = useState(false);
+  // Agregar estado para controlar la visibilidad del indicador de OCR procesado
+  const [showOcrProcessedMessage, setShowOcrProcessedMessage] = useState(false);
+
+  // Efecto para mostrar temporalmente el mensaje de OCR procesado
+  useEffect(() => {
+    if (book?.processedWithOcr && !book.ocrInProgress) {
+      // Mostrar el mensaje
+      setShowOcrProcessedMessage(true);
+      
+      // Ocultar el mensaje después de 2 segundos
+      const timer = setTimeout(() => {
+        setShowOcrProcessedMessage(false);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [book]);
+
+  // Modificar el componente OcrProgressIndicator para incluir un botón para minimizar
+  const OcrProgressIndicator = ({ book }: { book: Book }) => {
+    // Si el libro no está en proceso de OCR, no mostrar nada
+    if (!book?.ocrInProgress) return null;
+    
+    // Calcular el porcentaje de progreso
+    const progressPercent = book.ocrTotal ? Math.round((book.ocrProgress / book.ocrTotal) * 100) : 0;
+    
+    if (ocrIndicatorMinimized) {
+      // Versión minimizada - solo mostrar un botón flotante para expandir
+      return (
+        <div 
+          onClick={() => setOcrIndicatorMinimized(false)}
+          className="fixed top-20 right-4 bg-blue-600 text-white px-3 py-2 rounded-full shadow-lg flex items-center z-[200] cursor-pointer hover:bg-blue-700 transition-all"
+        >
+          <Loader2 className="animate-spin h-4 w-4 mr-2" />
+          <span className="text-xs font-medium">OCR: {progressPercent}%</span>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-[90%] sm:w-[320px] overflow-hidden">
+        {/* Encabezado */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-4 py-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white flex items-center">
+            <Loader2 className="animate-spin h-4 w-4 mr-2" />
+            OCR en progreso
+          </h3>
+          <button
+            onClick={() => setOcrIndicatorMinimized(true)}
+            className="text-white/80 hover:text-white p-1 rounded"
+            title="Minimizar"
+          >
+            <Minimize size={14} />
+          </button>
+        </div>
+        
+        {/* Contenido */}
+        <div className="p-4">
+          {/* Información */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Páginas procesadas:
+            </span>
+            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full">
+              {book.ocrProgress} de {book.ocrTotal}
+            </span>
+          </div>
+          
+          {/* Barra de progreso */}
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-3">
+            <div 
+              className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progressPercent}%` }}
+            ></div>
+          </div>
+          
+          {/* Mensaje */}
+          <p className="text-xs text-gray-600 dark:text-gray-400 text-center mt-1">
+            Puedes continuar leyendo mientras se completa el OCR.
+            <br/>Las páginas se actualizarán automáticamente.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  // Antes del return principal del componente Reader
+  // Agregar un indicador del progreso de OCR en el título
+  useEffect(() => {
+    // Actualizar el título del documento para mostrar el progreso del OCR
+    if (book?.ocrInProgress && book.ocrTotal > 0) {
+      const percent = Math.round((book.ocrProgress / book.ocrTotal) * 100);
+      document.title = `OCR ${percent}% - ${book.title} | Lexingo`;
+    } else if (book) {
+      document.title = `${book.title} | Lexingo`;
+    } else {
+      document.title = 'Lexingo';
+    }
+    
+    return () => {
+      document.title = 'Lexingo';
+    };
+  }, [book]);
+
   if (!book) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
@@ -580,7 +726,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   }
 
   return (
-    <div
+    <div 
       ref={readerRef}
       className={`min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-white flex flex-col ${isFullScreen ? 'reader-fullscreen' : ''}`}
       onMouseMove={() => setShowControls(true)}
@@ -681,7 +827,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           </div>
         </div>
       </div>
-      
+
       {/* Línea divisoria */}
       <div className={`fixed ${!isFullScreen ? 'md:top-[4.5rem] top-[4.5rem]' : 'top-12'} left-0 right-0 h-[1px] bg-gray-300/80 dark:bg-gray-600/80 z-[39]`}></div>
 
@@ -718,6 +864,10 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         </div>
       )}
 
+      {/* OCR Indicator */}
+      <OcrIndicator isVisible={showOcrProcessedMessage && !!book?.processedWithOcr && !book?.ocrInProgress} />
+      <OcrProgressIndicator book={book} />
+
       {/* Contenido principal */}
       <div 
         className={`flex-grow overflow-y-auto p-4 ${
@@ -731,34 +881,68 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           className="max-w-3xl mx-auto text-justify px-2"
           style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
         >
-          {allWords.map((word, idx) => (
-            <React.Fragment key={`${word}-${idx}`}>
-              <span
-                className={`
-                  word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
-                  border mx-[2px] 
-                  ${isSelectingTextRange 
-                    ? startWordIndex === idx 
-                      ? 'bg-purple-600 text-white border-purple-700'
-                      : startWordIndex !== null && endWordIndex !== null && idx >= startWordIndex && idx <= endWordIndex
-                        ? 'bg-purple-100 dark:bg-purple-900/40 text-gray-800 dark:text-white border-purple-200 dark:border-purple-800'
-                        : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60'
-                    : idx === selectedWordIndex && isTooltipOpen
-                      ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' // Estilo para palabra seleccionada para traducción
-                      : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/30'
-                  }
-                `}
-                onClick={(e) => handleWordClick({ text: word, index: idx }, e, idx)}
-                title={!isSelectingTextRange ? "Pulsa para ver traducción" : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
-              >
-                {word}
-              </span>
-              {' '}
-            </React.Fragment>
-          ))}
+          {book && book.pages[book.currentPage - 1]?.content.includes('[Contenido de la página') || 
+           book.pages[book.currentPage - 1]?.content.includes('[Procesando OCR para página') ? (
+            // Mostrar el texto de marcador de posición con un estilo diferente
+            <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg border border-gray-300 dark:border-gray-700 text-center">
+              <div className="mb-4">
+                {book.pages[book.currentPage - 1]?.content.includes('[Procesando OCR') ? (
+                  <div className="animate-pulse flex flex-col items-center">
+                    <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
+                    <p className="text-lg font-medium text-blue-600 dark:text-blue-400 mb-2">
+                      Procesando OCR para esta página...
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md text-center">
+                      El texto de esta página se está extrayendo con OCR.
+                      <br/>Puedes navegar a otras páginas mientras se completa el proceso.
+                    </p>
+                  </div>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+              </div>
+              {book.pages[book.currentPage - 1]?.content.split('\n').map((line, idx) => (
+                <React.Fragment key={idx}>
+                  <p className={`${idx === 0 ? 'font-medium text-lg text-gray-700 dark:text-gray-300' : 'text-gray-600 dark:text-gray-400'} mb-2`}>
+                    {line}
+                  </p>
+                  {line === '' && <br />}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            // Mostrar palabras normales como antes
+            allWords.map((word, idx) => (
+              <React.Fragment key={`${word}-${idx}`}>
+                    <span
+                  className={`
+                    word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
+                    border mx-[2px] 
+                    ${isSelectingTextRange 
+                      ? startWordIndex === idx 
+                        ? 'bg-purple-600 text-white border-purple-700'
+                        : startWordIndex !== null && endWordIndex !== null && idx >= startWordIndex && idx <= endWordIndex
+                          ? 'bg-purple-100 dark:bg-purple-900/40 text-gray-800 dark:text-white border-purple-200 dark:border-purple-800'
+                          : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60'
+                      : idx === selectedWordIndex && isTooltipOpen
+                        ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' // Estilo para palabra seleccionada para traducción
+                        : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                    }
+                  `}
+                  onClick={(e) => handleWordClick({ text: word, index: idx }, e, idx)}
+                  title={!isSelectingTextRange ? "Pulsa para ver traducción" : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
+                    >
+                      {word}
+                    </span>
+                    {' '}
+                  </React.Fragment>
+            ))
+          )}
         </div>
       </div>
-        
+
       {/* Barra de control inferior fija */}
       <div className="reader-controls fixed bottom-[56px] sm:bottom-16 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 p-2 z-[100] transition-opacity duration-300 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-1">
@@ -804,11 +988,11 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           
           {/* Sección de navegación */}
           <div className="flex items-center">
-            <button
-              onClick={handlePreviousPage}
-              disabled={book.currentPage <= 1}
+          <button
+            onClick={handlePreviousPage}
+            disabled={book.currentPage <= 1}
               className="p-1.5 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-            >
+          >
               <ArrowLeft size={18} />
             </button>
             <span className="mx-2 text-sm text-gray-700 dark:text-gray-300 font-medium">
@@ -820,12 +1004,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               className="p-1.5 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
             >
               <ArrowRight size={18} />
-            </button>
+          </button>
           </div>
           
           {/* Línea divisoria vertical */}
           <div className="h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
-          
+
           {/* Sección de zoom */}
           <div className="flex items-center">
             <button
@@ -876,13 +1060,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           {/* Encabezado */}
           <div className="flex justify-between items-center bg-gradient-to-r from-purple-900 to-blue-900 px-4 py-3 rounded-t-lg">
             <div className="text-sm text-gray-100 font-medium">Texto original</div>
-            <button
+          <button 
               onClick={closeTranslation}
               className="text-gray-300 hover:text-white focus:outline-none"
               aria-label="Cerrar"
-            >
-              <X size={16} />
-            </button>
+          >
+            <X size={16} />
+          </button>
           </div>
           
           {/* Contenido */}
@@ -931,6 +1115,17 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Dentro del contenido del retorno principal, después de la barra de navegación */}
+      {/* Agregar una notificación si el procesamiento OCR está en progreso */}
+      {book?.ocrInProgress && (
+        <div className="fixed bottom-4 right-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center z-[150] animate-pulse">
+          <Loader2 className="animate-spin h-4 w-4 mr-2" />
+          <span className="text-xs font-medium">
+            OCR: {Math.round((book.ocrProgress / book.ocrTotal) * 100)}%
+          </span>
         </div>
       )}
 
