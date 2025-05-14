@@ -93,6 +93,42 @@ export const OpenAIService = {
       console.error('Error al llamar a la API de OpenAI para traducir párrafo:', error);
       throw error;
     }
+  },
+
+  /**
+   * Obtiene una respuesta de chat de OpenAI usando un historial de mensajes.
+   * @param messages - Array de mensajes que componen la conversación.
+   * @returns La respuesta del asistente de IA.
+   */
+  async getAIChatResponse(messages: Array<{ role: string; content: string }>): Promise<string> {
+    try {
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('La clave API de OpenAI no está configurada');
+      }
+      
+      const response = await axios.post<OpenAIResponse>(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4.1', // Usando el modelo especificado
+          messages: messages,
+          temperature: 0.7, // Temperatura típica para chat
+          max_tokens: 1000 // Permitir respuestas más largas
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          }
+        }
+      );
+      
+      return response.data.choices[0]?.message?.content?.trim() || '';
+    } catch (error) {
+      console.error('Error al llamar a la API de OpenAI para chat:', error);
+      throw error;
+    }
   }
 };
 

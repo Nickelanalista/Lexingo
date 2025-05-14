@@ -4,11 +4,12 @@ import { useThemeContext } from '../context/ThemeContext';
 import { useTranslator } from '../hooks/useTranslator';
 import { Word, TranslationResult } from '../types';
 import WordTooltip from './WordTooltip';
-import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Bookmark, BookmarkCheck, Save, Languages, Volume2, VolumeX, Loader2, LogOut } from 'lucide-react';
+import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Bookmark, BookmarkCheck, Save, Languages, Volume2, VolumeX, Loader2, LogOut, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useFloating, offset, flip, shift, arrow, autoUpdate } from '@floating-ui/react';
 import TTSService from '../services/tts';
 import { supabase } from '../lib/supabase';
+import AIChatModal from './AIChatModal';
 
 interface ReaderProps {
   onFullScreenChange?: (isFullScreen: boolean) => void;
@@ -369,6 +370,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const translateTextSelection = async (text: string) => {
     if (!text) return;
     
+    setShowAIChatModal(false); // Asegurarse de que el chat esté cerrado
     setIsTranslating(true);
     
     try {
@@ -724,6 +726,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     };
   }, [book]);
 
+  // State for AI Chat Modal
+  const [showAIChatModal, setShowAIChatModal] = useState(false);
+
   if (!book) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
@@ -892,7 +897,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         className={`flex-grow overflow-y-auto p-4 ${
           !isFullScreen 
             ? 'pt-6 pb-32 md:pt-4 md:pb-36' // Reducir el padding superior para tener menos espacio
-            : 'pt-4 pb-16'
+            : 'pt-14 pb-16' // Aumentado de pt-4 a pt-14
         }`} 
         ref={contentRef}
       >
@@ -1110,6 +1115,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               {/* Botones de audio */}
               <div className="flex justify-end space-x-2 mt-3">
                 <button
+                  onClick={() => {
+                    if (selectedText) {
+                      setShowAIChatModal(true);
+                    }
+                  }}
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded text-xs text-white"
+                  title="Consultar con IA sobre este texto"
+                >
+                  <Sparkles size={14} />
+                  <span>Consultar IA</span>
+                </button>
+                <button
                   onClick={isPlayingAudio === 'en' ? stopAudio : () => playTranslationAudio('en')}
                   className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'en' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded text-xs`}
                 >
@@ -1131,15 +1148,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         </div>
       )}
 
-      {/* Dentro del contenido del retorno principal, después de la barra de navegación */}
-      {/* Agregar una notificación si el procesamiento OCR está en progreso */}
-      {book?.ocrInProgress && (
-        <div className="fixed bottom-4 right-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center z-[150] animate-pulse">
-          <Loader2 className="animate-spin h-4 w-4 mr-2" />
-          <span className="text-xs font-medium">
-            OCR: {Math.round((book.ocrProgress / book.ocrTotal) * 100)}%
-          </span>
-        </div>
+      {/* AI Chat Modal */}
+      {showAIChatModal && selectedText && (
+        <AIChatModal 
+          isOpen={showAIChatModal}
+          onClose={() => setShowAIChatModal(false)}
+          initialText={selectedText}
+        />
       )}
 
       {/* Estilos de scrollbar y animaciones */}

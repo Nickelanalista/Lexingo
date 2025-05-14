@@ -17,13 +17,17 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const { translateWord, simulateTranslation, isTranslating, error } = useTranslator();
   const [isPlayingAudio, setIsPlayingAudio] = useState<'en' | 'es' | null>(null);
+  const [isPositioned, setIsPositioned] = useState(false);
+  
+  // Ocultar el tooltip hasta que se determine la posición final
+  const [shouldRender, setShouldRender] = useState(false);
   
   const { refs, floatingStyles, context } = useFloating({
     open: isOpen,
     elements: {
       reference: referenceElement
     },
-    placement: 'top',
+    placement: 'bottom',
     middleware: [
       offset(8),
       flip(),
@@ -38,6 +42,25 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
     refs.setFloating(node);
     if (node) tooltipRef.current = node;
   };
+
+  // Cuando se abre el tooltip, calculamos primero la posición y luego lo mostramos
+  useEffect(() => {
+    if (isOpen) {
+      // Resetear estado
+      setIsPositioned(false);
+      setShouldRender(false);
+      
+      // Pequeño retraso para permitir que floating-ui calcule la posición final
+      const timer = setTimeout(() => {
+        setIsPositioned(true);
+        setShouldRender(true);
+      }, 10);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShouldRender(false);
+    }
+  }, [isOpen]);
 
   // Manejar clic fuera del tooltip
   useEffect(() => {
@@ -109,21 +132,49 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !shouldRender) return null;
 
   // Determinar si es una sola palabra o un texto más largo (párrafo)
   const isParagraph = word.split(/\s+/).length > 5;
 
+  // Ajustar la posición de la flecha según el placement actual
+  const isTop = context.placement === 'top';
+  const arrowStyles = isTop
+    ? {
+        top: 'auto',
+        bottom: '-6px',
+        left: '50%',
+        transform: 'translateX(-50%) rotate(45deg)',
+        borderTop: 'none',
+        borderLeft: 'none'
+      }
+    : {
+        bottom: 'auto',
+        top: '-6px',
+        left: '50%',
+        transform: 'translateX(-50%) rotate(45deg)',
+        borderBottom: 'none',
+        borderRight: 'none'
+      };
+
   return (
     <div
       ref={setFloating}
-      style={floatingStyles}
-      className="z-50 px-3 py-2 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 w-auto min-w-48 max-w-lg animate-fadeIn"
+      style={{
+        ...floatingStyles,
+        opacity: isPositioned ? 1 : 0, // Solo mostrar cuando la posición es final
+        transition: 'opacity 150ms ease-in-out'
+      }}
+      className="z-[9999] shadow-xl bg-gray-900 dark:bg-gray-800 text-white rounded-lg min-w-48 max-w-lg w-auto"
     >
-      <div className="absolute top-2 right-2">
+      {/* Encabezado */}
+      <div className="flex justify-between items-center bg-gradient-to-r from-purple-900 to-blue-900 px-4 py-2 rounded-t-lg">
+        {showBothLanguages && (
+          <div className="text-sm text-gray-100 font-medium">Inglés</div>
+        )}
         <button 
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          className="text-gray-300 hover:text-white focus:outline-none ml-auto"
           aria-label="Cerrar"
         >
           <X size={14} />
@@ -132,28 +183,18 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
       
       <div 
         ref={arrowRef}
-        className="absolute w-3 h-3 bg-white dark:bg-gray-800 transform rotate-45 border-b border-r border-gray-200 dark:border-gray-700"
-        style={{
-          top: 'auto',
-          bottom: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%) rotate(45deg)',
-        }}
+        className="absolute w-3 h-3 bg-gray-900 dark:bg-gray-800 transform border border-gray-700"
+        style={arrowStyles}
       />
       
-      <div className="text-center pt-2">
+      <div className="px-4 py-3">
         {showBothLanguages && (
-          <>
-            <div className="text-sm font-medium text-gray-500 dark:text-gray-300 mb-1">
-              Inglés
-            </div>
-            <div className="font-bold text-gray-900 dark:text-white mb-4">
-              {word}
-            </div>
-          </>
+          <div className="font-bold text-white mb-4 text-center">
+            {word}
+          </div>
         )}
         
-        <div className="text-sm font-medium text-gray-500 dark:text-gray-300 mb-1">
+        <div className="text-sm font-medium text-gray-300 mb-1">
           Español
         </div>
         
@@ -167,7 +208,7 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
           </div>
         ) : (
           <div className="relative">
-            <div className={`font-bold text-blue-600 dark:text-blue-400 ${isParagraph ? 'text-base text-left' : 'text-lg text-center'} mb-2`}>
+            <div className={`font-bold text-blue-400 ${isParagraph ? 'text-base text-left' : 'text-lg text-center'} mb-2`}>
               {translation?.translated || '...'}
             </div>
             
@@ -175,36 +216,36 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
               <div className="flex justify-center space-x-4 mt-3 mb-1">
                 <button
                   onClick={() => isPlayingAudio === 'en' ? stopAudio() : handlePlayAudio(word, 'en')}
-                  className="flex items-center text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  className="flex items-center text-xs px-2 py-1 bg-blue-900/50 hover:bg-blue-800/50 rounded text-gray-200 transition-colors"
                   disabled={isPlayingAudio === 'es' || isParagraph}
                 >
                   {isPlayingAudio === 'en' ? (
                     <>
                       <VolumeX size={14} className="mr-1 text-red-500" />
-                      <span className="dark:text-white">Detener</span>
+                      <span>Detener</span>
                     </>
                   ) : (
                     <>
-                      <Volume2 size={14} className="mr-1 text-gray-600 dark:text-gray-300" />
-                      <span className="dark:text-white">Inglés</span>
+                      <Volume2 size={14} className="mr-1 text-blue-400" />
+                      <span>Inglés</span>
                     </>
                   )}
                 </button>
                 
                 <button
                   onClick={() => isPlayingAudio === 'es' ? stopAudio() : handlePlayAudio(translation.translated, 'es')}
-                  className="flex items-center text-xs px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded hover:bg-blue-100 dark:hover:bg-blue-800/30 transition-colors"
+                  className="flex items-center text-xs px-2 py-1 bg-blue-900/50 hover:bg-blue-800/50 rounded text-gray-200 transition-colors"
                   disabled={isPlayingAudio === 'en' || isParagraph}
                 >
                   {isPlayingAudio === 'es' ? (
                     <>
                       <VolumeX size={14} className="mr-1 text-red-500" />
-                      <span className="dark:text-white">Detener</span>
+                      <span>Detener</span>
                     </>
                   ) : (
                     <>
-                      <Volume2 size={14} className="mr-1 text-blue-600 dark:text-blue-400" />
-                      <span className="dark:text-white">Español</span>
+                      <Volume2 size={14} className="mr-1 text-blue-400" />
+                      <span>Español</span>
                     </>
                   )}
                 </button>
