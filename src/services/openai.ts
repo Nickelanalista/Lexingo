@@ -111,10 +111,10 @@ export const OpenAIService = {
       const response = await axios.post<OpenAIResponse>(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: 'gpt-4.1', // Usando el modelo especificado
+          model: 'gpt-4o', // Usando el modelo especificado. Actualizado a gpt-4o para consistencia.
           messages: messages,
           temperature: 0.7, // Temperatura típica para chat
-          max_tokens: 1000 // Permitir respuestas más largas
+          max_tokens: 1500 // Permitir respuestas más largas y complejas
         },
         {
           headers: {
@@ -127,6 +127,53 @@ export const OpenAIService = {
       return response.data.choices[0]?.message?.content?.trim() || '';
     } catch (error) {
       console.error('Error al llamar a la API de OpenAI para chat:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Transcribe un archivo de audio a texto usando OpenAI.
+   * @param audioFile - El archivo de audio (File object) a transcribir.
+   * @returns El texto transcrito.
+   */
+  async transcribeAudio(audioFile: File): Promise<string> {
+    try {
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('La clave API de OpenAI no está configurada.');
+      }
+
+      const formData = new FormData();
+      formData.append('file', audioFile);
+      formData.append('model', 'gpt-4o-transcribe'); // Usando el modelo de transcripción avanzado
+      formData.append('response_format', 'text'); // Solicitamos texto plano como respuesta
+
+      const response = await axios.post(
+        'https://api.openai.com/v1/audio/transcriptions',
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            // 'Content-Type': 'multipart/form-data' // Axios lo establece automáticamente para FormData
+          },
+        }
+      );
+      
+      // La respuesta directa para response_format: text es el texto en response.data
+      if (typeof response.data === 'string') {
+        return response.data.trim();
+      }
+      // Si por alguna razón la respuesta no es un string (aunque no debería con 'text')
+      console.warn('La respuesta de transcripción no fue un string:', response.data);
+      return '';
+
+    } catch (error) {
+      console.error('Error al llamar a la API de OpenAI para transcripción:', error);
+      // Podrías querer manejar diferentes tipos de errores aquí, por ejemplo, si error.response existe
+      if (axios.isAxiosError(error) && error.response) {
+        console.error('Detalles del error de transcripción:', error.response.data);
+      }
       throw error;
     }
   }

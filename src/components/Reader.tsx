@@ -160,6 +160,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState<'en' | 'es' | null>(null);
   
   const [allWords, setAllWords] = useState<string[]>([]);
+  const [aiChatContextText, setAiChatContextText] = useState<string>('');
   
   // Referencias DOM
   const readerRef = useRef<HTMLDivElement>(null);
@@ -184,7 +185,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   useEffect(() => {
     if (book) {
       // Check if we have a bookmark in Supabase (via book.bookmarked)
-      setHasBookmark(book.bookmarked || false);
+      // setHasBookmark(book.bookmarked || false); // Eliminado ya que el botón se va
     }
   }, [book]);
   
@@ -207,7 +208,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         console.error('Error al guardar el marcador:', error);
       } else {
         // Show confirmation
-        setHasBookmark(true);
+        // setHasBookmark(true); // Eliminado
         setSaveConfirmation(true);
         
         // Hide confirmation after 2 seconds
@@ -965,39 +966,34 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       <div className="reader-controls fixed bottom-[56px] sm:bottom-16 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 p-2 z-[100] transition-opacity duration-300 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-1">
           {/* Botones de utilidad */}
-          <div className="flex items-center">
-            {/* Botón de marcador - unificado para guardar/ir al marcador */}
+          <div className="flex items-center space-x-2">
+            {/* Botón de traducción de texto MODIFICADO */}
             <button
-              onClick={hasBookmark ? goToBookmark : saveBookmark}
-              className="p-1.5 rounded-md text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
-              title={hasBookmark ? "Ir al marcador guardado" : "Guardar marcador"}
+              onClick={isSelectingTextRange ? cancelTextSelection : startTextSelection}
+              className={`p-1.5 rounded-full border-2 flex items-center transition-colors duration-150 focus:outline-none
+                ${isSelectingTextRange 
+                  ? 'border-teal-400 text-teal-500 bg-teal-50 dark:bg-teal-900/30' 
+                  : 'border-gray-400 text-gray-500 hover:border-gray-500 hover:text-gray-600 dark:border-gray-500 dark:text-gray-400 dark:hover:border-gray-400'
+                }`}
+              title={isSelectingTextRange ? "Cancelar selección de párrafo" : "Seleccionar párrafo para traducir"}
             >
-              {hasBookmark ? (
-                <BookmarkCheck size={18} />
-              ) : (
-                <Bookmark size={18} />
-              )}
+              <Languages size={18} />
             </button>
             
             {/* Línea divisoria vertical */}
-            <div className="h-5 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
+            <div className="h-5 w-px bg-gray-300/60 dark:bg-gray-700/60"></div>
             
-            {/* Mensaje de confirmación de guardado */}
-            {saveConfirmation && (
-              <div className="absolute -top-10 left-0 bg-green-600 text-white py-1 px-3 rounded-md text-sm animate-fade-in">
-                Marcador guardado
-              </div>
-            )}
-            
-            {/* Botón de traducción de texto */}
+            {/* Botón de Lexingo AI NUEVO */}
             <button
-              onClick={isSelectingTextRange ? cancelTextSelection : startTextSelection}
-              className={`p-1.5 rounded-md ${isSelectingTextRange 
-                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' 
-                : 'text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300'} flex items-center`}
-              title={isSelectingTextRange ? "Cancelar selección" : "Seleccionar texto para traducir"}
+              onClick={() => {
+                const currentPageContent = book?.pages[book.currentPage - 1]?.content || '';
+                setAiChatContextText(currentPageContent);
+                setShowAIChatModal(true); 
+              }}
+              className="p-0.5 rounded-full border-2 border-teal-400 hover:opacity-80 flex items-center focus:outline-none"
+              title="Consultar con Lexingo AI sobre esta página"
             >
-              <Languages size={18} />
+              <img src="/img/icono_lexingo.png" alt="Lexingo AI" className="w-5 h-5 rounded-full" />
             </button>
           </div>
           
@@ -1117,6 +1113,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                 <button
                   onClick={() => {
                     if (selectedText) {
+                      setAiChatContextText(selectedText);
                       setShowAIChatModal(true);
                     }
                   }}
@@ -1149,11 +1146,14 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       )}
 
       {/* AI Chat Modal */}
-      {showAIChatModal && selectedText && (
+      {showAIChatModal && aiChatContextText && (
         <AIChatModal 
           isOpen={showAIChatModal}
-          onClose={() => setShowAIChatModal(false)}
-          initialText={selectedText}
+          onClose={() => {
+            setShowAIChatModal(false);
+            setAiChatContextText(''); // Limpiar contexto al cerrar
+          }}
+          initialText={aiChatContextText}
         />
       )}
 

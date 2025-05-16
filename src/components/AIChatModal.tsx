@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { OpenAIService } from '../services/openai';
-import { X, Send, Loader2, Sparkles, UserCircle2 } from 'lucide-react';
+import { X, Send, Loader2, Sparkles, UserCircle2, Mic, StopCircle, Square, SignalHigh } from 'lucide-react';
 
 interface AIChatModalProps {
   isOpen: boolean;
@@ -61,14 +61,25 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
   const initialGreetingSentRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Estado para Speech-to-Text
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Estado para controlar la expansión del texto del usuario en el mensaje inicial
+  const [isUserTextExpanded, setIsUserTextExpanded] = useState(false);
+  const USER_TEXT_TRUNCATE_LENGTH = 300; // Caracteres a mostrar antes de truncar
+
   useEffect(() => {
     if (isOpen) {
-      if (!isLoading && inputRef.current) {
+      if (!isLoading && !isRecording && !isTranscribing && inputRef.current) {
         inputRef.current.focus();
       }
       if (initialText && !initialGreetingSentRef.current) {
         initialGreetingSentRef.current = true;
         setIsLoading(true);
+        setIsUserTextExpanded(false); // Resetear al abrir el modal
 
         const systemMessage: Message = {
           role: 'system',
@@ -98,20 +109,39 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
       setUserInput('');
       setIsLoading(false);
       initialGreetingSentRef.current = false;
+      setIsUserTextExpanded(false); // Asegurarse de resetear al cerrar
     }
   }, [isOpen, initialText]);
 
   useEffect(() => {
     if (chatContentRef.current) {
-      chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight;
+      const { current: chat } = chatContentRef;
+      const lastMessage = conversation[conversation.length - 1];
+
+      if (lastMessage && lastMessage.role === 'assistant') {
+        // Intentar hacer scroll al último elemento hijo del contenedor de chat,
+        // que debería ser el nuevo mensaje del asistente.
+        const lastMessageElement = chat.lastElementChild;
+        if (lastMessageElement) {
+          lastMessageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          // Fallback si no se encuentra el elemento, aunque es improbable si hay mensajes.
+          chat.scrollTop = chat.scrollHeight;
+        }
+      } else {
+        // Si el último mensaje es del usuario o no hay mensajes (o es el mensaje inicial del sistema),
+        // hacer scroll hasta el final para mantener el input visible.
+        chat.scrollTop = chat.scrollHeight;
+      }
     }
-    if (isOpen && !isLoading && inputRef.current) {
+
+    if (isOpen && !isLoading && !isRecording && !isTranscribing && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [conversation, isOpen, isLoading]);
+  }, [conversation, isOpen, isLoading, isRecording, isTranscribing]);
 
   const handleSendMessage = async () => {
-    if (userInput.trim() === '' || isLoading) return;
+    if (userInput.trim() === '' || isLoading || isRecording || isTranscribing) return;
 
     const newUserMessage: Message = { role: 'user', content: userInput };
     const currentConversation = [...conversation, newUserMessage];
@@ -134,6 +164,86 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
       setIsLoading(false);
     }
   };
+
+  // Funciones para Speech-to-Text
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      stopRecordingAndTranscribe();
+    } else {
+      startRecording();
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('La API de MediaDevices no es soportada en este navegador.');
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        setIsRecording(false);
+        setIsTranscribing(true);
+        setUserInput(''); // Limpiar input mientras transcribe
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], "recording.webm", {
+          type: "audio/webm",
+          lastModified: Date.now(),
+        });
+
+        try {
+          const transcribedText = await OpenAIService.transcribeAudio(audioFile);
+          setUserInput(transcribedText);
+        } catch (error) {
+          console.error("Error al transcribir el audio:", error);
+          alert("Error al transcribir el audio. Intenta de nuevo.");
+        } finally {
+          setIsTranscribing(false);
+          // Detener las pistas del stream para apagar el indicador del micrófono del navegador
+          stream.getTracks().forEach(track => track.stop());
+        }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setIsTranscribing(false);
+      setUserInput(''); // Limpiar input al empezar a grabar
+    } catch (error) {
+      console.error("Error al iniciar la grabación:", error);
+      alert("No se pudo iniciar la grabación. Asegúrate de permitir el acceso al micrófono.");
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecordingAndTranscribe = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      // El resto de la lógica está en el 'onstop' handler
+    }
+  };
+
+  // Limpiar al desmontar o cerrar
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      const stream = mediaRecorderRef.current?.stream;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -177,13 +287,22 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
                 const splitContent = msg.content.split(/(\[USER_TEXT_START\][\s\S]*?\[USER_TEXT_END\])/g);
                 messageParts = splitContent.flatMap((part, i) => { // Use flatMap as parseMarkdown returns an array
                   if (part.startsWith('[USER_TEXT_START]') && part.endsWith('[USER_TEXT_END]')) {
+                    const userText = part.replace('[USER_TEXT_START]', '').replace('[USER_TEXT_END]', '');
+                    const needsTruncation = userText.length > USER_TEXT_TRUNCATE_LENGTH;
+                    const displayText = isUserTextExpanded || !needsTruncation ? userText : `${userText.substring(0, USER_TEXT_TRUNCATE_LENGTH)}...`;
+
                     return [ // flatMap expects an array to be returned for each element
-                      <span 
-                        key={i} 
-                        className="block my-1 p-2 bg-gray-750 border border-purple-500 rounded-md shadow text-sm text-purple-300 whitespace-pre-wrap" // Reduced padding/margin
-                      >
-                        {part.replace('[USER_TEXT_START]', '').replace('[USER_TEXT_END]', '')}
-                      </span>
+                      <div key={i} className="block my-1 p-3 bg-gray-750 border border-purple-500 rounded-md shadow text-sm text-purple-300 whitespace-pre-wrap">
+                        {displayText}
+                        {needsTruncation && (
+                          <button
+                            onClick={() => setIsUserTextExpanded(!isUserTextExpanded)}
+                            className="block text-xs text-purple-400 hover:text-purple-200 mt-2 focus:outline-none underline"
+                          >
+                            {isUserTextExpanded ? 'Mostrar menos' : 'Mostrar más'}
+                          </button>
+                        )}
+                      </div>
                     ];
                   }
                   // Apply Markdown to assistant text parts that are NOT the user_text block
@@ -202,21 +321,24 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
             return (
               <div 
                 key={index} 
-                className={`flex items-end space-x-2 ${msg.role === 'user' ? 'justify-end flex-row-reverse space-x-reverse' : 'justify-start'}`}
+                className={`flex items-end w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                {isAssistant ? (
-                  <img src="/img/icono_lexingo.png" alt="Lexi" className="w-8 h-8 rounded-full border-2 border-purple-400 self-start flex-shrink-0"/>
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold self-start flex-shrink-0">
-                    U {/* Placeholder for User Avatar */}
-                  </div>
-                )}
                 <div 
-                  className={`max-w-[75%] p-3 rounded-xl shadow ${msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-br-none' // User bubble on the left of avatar (visual right), so BR corner is normal
-                    : 'bg-gray-700 text-gray-200 rounded-bl-none'} whitespace-pre-wrap`} // Assistant bubble on the right of avatar, BL normal
-                >
-                  {messageParts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}
+                  className={`flex items-end space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                  {isAssistant ? (
+                    <img src="/img/icono_lexingo.png" alt="Lexi" className="w-8 h-8 rounded-full border-2 border-purple-400 self-start flex-shrink-0"/>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold self-start flex-shrink-0">
+                      U {/* Placeholder for User Avatar */}
+                    </div>
+                  )}
+                  <div 
+                    className={`max-w-[75%] p-3 rounded-xl shadow ${msg.role === 'user' 
+                      ? 'bg-blue-600 text-white rounded-br-none' 
+                      : 'bg-gray-700 text-gray-200 rounded-bl-none'} whitespace-pre-wrap`}
+                  >
+                    {messageParts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}
+                  </div>
                 </div>
               </div>
             );
@@ -242,26 +364,74 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
         </div>
 
         <div className="p-4 border-t border-gray-700 bg-gray-850">
-          <div className="flex items-center bg-gray-700 rounded-lg">
-            <input 
-              ref={inputRef}
-              type="text"
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
-              placeholder="Escribe tu pregunta sobre el texto..."
-              className="flex-grow p-3 bg-transparent text-gray-200 placeholder-gray-500 focus:outline-none rounded-l-lg"
-              disabled={isLoading}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
-            <button 
-              onClick={handleSendMessage} 
-              disabled={isLoading || userInput.trim() === ''}
-              className="p-3 text-purple-400 hover:text-purple-300 disabled:text-gray-500 disabled:cursor-not-allowed rounded-r-lg transition-colors"
-              aria-label="Enviar mensaje"
-            >
-              {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-            </button>
+          <div className="flex items-center bg-gray-700 rounded-lg p-1.5 pr-2.5 relative">
+            {/* Área de Input o Indicador de Estado */} 
+            <div className="flex-grow flex items-center justify-center min-h-[40px]"> {/* Asegura altura mínima */} 
+              {isRecording ? (
+                <div className="flex items-center text-yellow-400">
+                  <Mic size={20} className="animate-pulse mr-2" />
+                  <span>Grabando...</span>
+                </div>
+              ) : isTranscribing ? (
+                <div className="flex items-center text-blue-400">
+                  <Loader2 size={20} className="animate-spin mr-2" />
+                  <span>Transcribiendo...</span>
+                </div>
+              ) : (
+                <input 
+                  ref={inputRef}
+                  type="text"
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
+                  placeholder="Escribe tu pregunta sobre el texto..."
+                  className="w-full h-full bg-transparent text-gray-200 placeholder-gray-400 focus:outline-none px-2 py-1"
+                  disabled={isLoading}
+                  onMouseDown={(e) => e.stopPropagation()}
+                />
+              )}
+            </div>
+
+            {/* Botones a la derecha */} 
+            <div className="flex items-center space-x-1.5 ml-2">
+              {!isRecording && !isTranscribing && (
+                <button
+                  onClick={handleToggleRecording} 
+                  className="p-2 text-gray-400 hover:text-gray-300 transition-colors rounded-full border-2 border-gray-600 hover:border-gray-500 focus:outline-none"
+                  aria-label="Iniciar grabación"
+                >
+                  <Mic size={20} />
+                </button>
+              )}
+
+              <button 
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecordingAndTranscribe();
+                  } else if (!isTranscribing) {
+                    handleSendMessage();
+                  }
+                  // No hacer nada si está transcribiendo
+                }}
+                disabled={(isLoading && !isRecording) || isTranscribing || (!isRecording && userInput.trim() === '')}
+                className={`p-2 rounded-full flex items-center justify-center transition-all duration-150 ease-in-out 
+                  ${isRecording
+                    ? 'bg-red-500 hover:bg-red-600 text-white w-9 h-9' // Botón detener grabación
+                    : isTranscribing 
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed w-9 h-9' // Transcribiendo
+                      : 'bg-purple-600 hover:bg-purple-700 text-white disabled:bg-gray-500 disabled:hover:bg-gray-500 disabled:cursor-not-allowed w-9 h-9' // Enviar texto
+                  }`}
+                aria-label={isRecording ? "Detener grabación" : isTranscribing ? "Transcribiendo" : "Enviar mensaje"}
+              >
+                {isRecording ? (
+                  <Square size={16} fill="white" /> // Icono cuadrado para detener
+                ) : isTranscribing ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
