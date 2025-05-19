@@ -137,6 +137,21 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // useEffect para manejar el z-index del dropdown del perfil
+  // Esto asume que dropdownRef es el elemento del menú del perfil
+  // y dropdownOpen controla su visibilidad.
+  useEffect(() => {
+    if (dropdownRef.current) {
+      if (dropdownOpen) {
+        // Asegurar que el menú del perfil esté por encima de otros elementos del Reader
+        dropdownRef.current.style.zIndex = '10001'; // Más alto que tooltips y modales (que usan hasta 9999)
+      } else {
+        // Restaurar z-index o quitarlo si ya no está abierto
+        dropdownRef.current.style.zIndex = ''; 
+      }
+    }
+  }, [dropdownOpen]); // Se ejecuta cuando dropdownOpen cambia
   
   // Estados para la selección y traducción de palabras
   const [selectedWord, setSelectedWord] = useState<string>('');
@@ -795,7 +810,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       )}
       
       {/* Barra de navegación de lectura */}
-      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
+      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
         <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between">
           {/* Botón izquierdo: volver o salir */}
           <div className="w-1/3 flex justify-start">
@@ -854,7 +869,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       </div>
 
       {/* Línea divisoria */}
-      <div className={`fixed ${!isFullScreen ? 'md:top-[4.5rem] top-[4.5rem]' : 'top-12'} left-0 right-0 h-[1px] bg-gray-300/80 dark:bg-gray-600/80 z-[39]`}></div>
+      <div className={`fixed ${!isFullScreen ? 'md:top-[4.5rem] top-[4.5rem]' : 'top-12'} left-0 right-0 h-[1px] bg-gray-300/80 dark:bg-gray-600/80 z-9`}></div>
 
       {/* Indicador de modo selección */}
       {isSelectingTextRange && showSelectionMessage && (

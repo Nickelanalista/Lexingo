@@ -21,9 +21,8 @@ export default function LandingPage() {
       <nav className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center">
-              <img src="/img/lexingo_white.png" alt="Lexingo" className="h-8" />
-              <span className="ml-2 text-xl font-bold">Lexingo</span>
+            <div className="flex-1 flex justify-center items-center">
+              <img src="/img/lexingo_white.png" alt="Lexingo" className="h-9" />
             </div>
             <div className="flex items-center space-x-4">
               <button
