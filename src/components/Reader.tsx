@@ -2,11 +2,12 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { useTranslator } from '../hooks/useTranslator';
+import { getLanguageName } from '../services/openai';
 import { Word, TranslationResult } from '../types';
 import WordTooltip from './WordTooltip';
-import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Bookmark, BookmarkCheck, Save, Languages, Volume2, VolumeX, Loader2, LogOut, Sparkles } from 'lucide-react';
+import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Languages, Volume2, VolumeX, Loader2, Sparkles, Check, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useFloating, offset, flip, shift, arrow, autoUpdate } from '@floating-ui/react';
+import { useFloating, offset, flip, shift, autoUpdate, useClick, useDismiss, useRole, useInteractions, FloatingFocusManager } from '@floating-ui/react';
 import TTSService from '../services/tts';
 import { supabase } from '../lib/supabase';
 import AIChatModal from './AIChatModal';
@@ -19,10 +20,27 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const navigate = useNavigate();
   const { book, setBook, goToPage, pagesSkipped, loadBookAndSkipEmptyPages, updateReadingProgress } = useBookContext();
   const { fontSize, increaseFontSize, decreaseFontSize, theme, toggleTheme } = useThemeContext();
-  const { translateParagraph } = useTranslator();
+  const { translateParagraph, translateWord, translatePageText, isLoading: isTranslatorLoading } = useTranslator();
   
   // Estado para mostrar el mensaje de páginas omitidas
   const [showSkippedMessage, setShowSkippedMessage] = useState(false);
+  
+  // Estado para el idioma de lectura actual del libro
+  const [currentBookLanguage, setCurrentBookLanguage] = useState<string>('en');
+  const [sourceBookLanguage, setSourceBookLanguage] = useState<string>('en');
+  const [translatedPageContent, setTranslatedPageContent] = useState<string | null>(null);
+  const [isPageTranslating, setIsPageTranslating] = useState(false);
+  const [nextPageTranslatedContent, setNextPageTranslatedContent] = useState<string | null>(null);
+  const [isTranslatingNextPage, setIsTranslatingNextPage] = useState(false);
+  
+  const [currentPageContentForDisplay, setCurrentPageContentForDisplay] = useState<string | null>(null);
+  const [isCurrentPageTranslating, setIsCurrentPageTranslating] = useState(false);
+  
+  const [proactivelyTranslatedNextPageContent, setProactivelyTranslatedNextPageContent] = useState<string | null>(null);
+  const [proactivelyTranslatedForPageNumber, setProactivelyTranslatedForPageNumber] = useState<number | null>(null);
+  const [isProactivelyTranslatingNextPage, setIsProactivelyTranslatingNextPage] = useState(false);
+
+  const prevBookPageRef = useRef<number | null>(null);
   
   // Cargar el último libro leído si no hay un libro seleccionado
   useEffect(() => {
@@ -240,26 +258,152 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   };
 
-  // Extraer todas las palabras de la página actual
+  // Efecto 1: Manejar la página actual (N)
+  useEffect(() => {
+    console.log('[PAGE_N_EFFECT] Triggered. Current Page:', book?.currentPage, 'Lang:', currentBookLanguage, 'DisplayContent empty?', !currentPageContentForDisplay);
+    if (!book || !book.pages || book.pages.length === 0) {
+      setCurrentPageContentForDisplay(null);
+      setIsCurrentPageTranslating(false);
+      return;
+    }
+
+    const pageIndex = book.currentPage - 1;
+    const originalContent = book.pages[pageIndex]?.content;
+
+    if (!originalContent || originalContent.startsWith('[Contenido de la página') || originalContent.startsWith('[Procesando OCR para página')) {
+      console.log('[PAGE_N_EFFECT] Placeholder content, setting to original.');
+      setCurrentPageContentForDisplay(originalContent || '');
+      setAllWords(originalContent ? originalContent.split(/\s+/) : []);
+      setIsCurrentPageTranslating(false);
+      return;
+    }
+
+    // Intentar usar contenido pre-traducido para la página N
+    if (proactivelyTranslatedNextPageContent && proactivelyTranslatedForPageNumber === book.currentPage) {
+      console.log(`[PAGE_N_EFFECT] Using proactively translated content for page ${book.currentPage}`);
+      setCurrentPageContentForDisplay(proactivelyTranslatedNextPageContent);
+      setAllWords(proactivelyTranslatedNextPageContent.split(/\s+/));
+      setIsCurrentPageTranslating(false);
+      // Limpiar para que no se use de nuevo accidentalmente si volvemos a esta página sin que N+1 se actualice
+      setProactivelyTranslatedNextPageContent(null); 
+      setProactivelyTranslatedForPageNumber(null);
+      return;
+    }
+
+    // Si el idioma actual es el original del libro
+    if (currentBookLanguage === sourceBookLanguage) {
+      console.log('[PAGE_N_EFFECT] Source language, setting to original.');
+      setCurrentPageContentForDisplay(originalContent);
+      setAllWords(originalContent.split(/\s+/));
+      setIsCurrentPageTranslating(false);
+    } else {
+      // Necesita traducción para la página N
+      console.log(`[PAGE_N_EFFECT] Needs translation for page ${book.currentPage} to ${currentBookLanguage}. Original: ${originalContent.substring(0,50)}...`);
+      setIsCurrentPageTranslating(true);
+      setCurrentPageContentForDisplay(null); // Mostrar loader mientras se traduce N
+      translatePageText(originalContent, currentBookLanguage, sourceBookLanguage)
+        .then(translated => {
+          console.log(`[PAGE_N_EFFECT] Translation for page ${book.currentPage} done. Translated: ${translated ? translated.substring(0,50) : 'null'}...`);
+          setCurrentPageContentForDisplay(translated || originalContent); // Fallback a original si la traducción falla
+          setAllWords(translated ? translated.split(/\s+/) : originalContent.split(/\s+/));
+        })
+        .catch(error => {
+          console.error(`[PAGE_N_EFFECT] Error translating page ${book.currentPage}:`, error);
+          setCurrentPageContentForDisplay(originalContent); // Fallback
+          setAllWords(originalContent.split(/\s+/));
+        })
+        .finally(() => {
+          setIsCurrentPageTranslating(false);
+        });
+    }
+  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.pages, proactivelyTranslatedNextPageContent, proactivelyTranslatedForPageNumber, translatePageText]);
+
+  // Efecto 2: Traducir proactivamente la página N+1 DESPUÉS de que N esté lista
+  useEffect(() => {
+    if (!book || !book.pages || book.pages.length === 0 || isCurrentPageTranslating || isProactivelyTranslatingNextPage) {
+      // No hacer nada si N aún se está cargando/traduciendo, o si N+1 ya está en proceso
+      return;
+    }
+
+    const currentPageNum = book.currentPage; // Esta es N
+    const nextPageNum = currentPageNum + 1;    // Esta es N+1
+
+    if (nextPageNum > book.totalPages) {
+      console.log('[PAGE_N+1_EFFECT] No next page to translate proactively.');
+      setProactivelyTranslatedNextPageContent(null); // Limpiar si no hay más páginas
+      setProactivelyTranslatedForPageNumber(null);
+      return;
+    }
+
+    // Si ya tenemos una traducción para N+1 (y es la correcta), no hacer nada.
+    // Esto puede suceder si el usuario va y vuelve rápidamente.
+    if (proactivelyTranslatedForPageNumber === nextPageNum && proactivelyTranslatedNextPageContent) {
+      console.log(`[PAGE_N+1_EFFECT] Page ${nextPageNum} already proactively translated.`);
+      return;
+    }
+
+    // Si el idioma de visualización es el original, no necesitamos pre-traducir.
+    if (currentBookLanguage === sourceBookLanguage) {
+      console.log('[PAGE_N+1_EFFECT] Source language, no proactive translation needed.');
+      setProactivelyTranslatedNextPageContent(null);
+      setProactivelyTranslatedForPageNumber(null);
+      return;
+    }
+    
+    const nextPageOriginalContent = book.pages[nextPageNum - 1]?.content; // nextPageNum es 1-indexed
+
+    if (!nextPageOriginalContent || nextPageOriginalContent.startsWith('[Contenido de la página') || nextPageOriginalContent.startsWith('[Procesando OCR para página')) {
+      console.log(`[PAGE_N+1_EFFECT] Next page ${nextPageNum} has placeholder content, not translating proactively.`);
+      return;
+    }
+
+    console.log(`[PAGE_N+1_EFFECT] Starting proactive translation for page ${nextPageNum} (from current ${currentPageNum}) to ${currentBookLanguage}.`);
+    setIsProactivelyTranslatingNextPage(true);
+    translatePageText(nextPageOriginalContent, currentBookLanguage, sourceBookLanguage)
+      .then(translated => {
+        console.log(`[PAGE_N+1_EFFECT] Proactive translation for page ${nextPageNum} done. Content: ${translated ? 'OK' : 'FAIL'}`);
+        setProactivelyTranslatedNextPageContent(translated);
+        setProactivelyTranslatedForPageNumber(nextPageNum); // Guardar para qué página N+1 es esta traducción
+      })
+      .catch(error => {
+        console.error(`[PAGE_N+1_EFFECT] Error proactively translating page ${nextPageNum}:`, error);
+        setProactivelyTranslatedNextPageContent(null); // Limpiar en caso de error
+        setProactivelyTranslatedForPageNumber(null);
+      })
+      .finally(() => {
+        setIsProactivelyTranslatingNextPage(false);
+      });
+
+  // Dependencias: cuando la página N cambia, o el contenido de N (currentPageContentForDisplay) se establece,
+  // o el idioma del libro cambia. También book.pages para el contenido de N+1.
+  }, [currentPageContentForDisplay, book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.totalPages, book?.pages, isCurrentPageTranslating, isProactivelyTranslatingNextPage, translatePageText]);
+  
+  // Actualizar allWords cuando currentPageContentForDisplay cambie
+  useEffect(() => {
+    if (currentPageContentForDisplay) {
+      setAllWords(currentPageContentForDisplay.split(/\s+/));
+    } else if (book && book.pages && book.pages.length > 0) {
+      // Fallback al contenido original si currentPageContentForDisplay es null
+      const originalContent = book.pages[book.currentPage - 1]?.content || '';
+      setAllWords(originalContent.split(/\s+/));
+    }
+  }, [currentPageContentForDisplay, book?.currentPage, book?.pages]);
+
+  // Guardar la referencia de la página actual para la lógica de N+1
   useEffect(() => {
     if (book) {
-      const currentPage = book.pages[book.currentPage - 1]?.content || '';
-      setAllWords(currentPage.split(/\s+/));
-      
-      // Reset selection when page changes
-      setStartWordIndex(null);
-      setEndWordIndex(null);
-      setSelectedText('');
-      setTranslatedText('');
-      setIsSelectingTextRange(false);
-      setShowTranslation(false);
-      
-      // Actualizar el progreso de lectura en la base de datos cuando cambia la página
-      if (book.id) {
-        updateReadingProgress(book.id, book.currentPage);
-      }
+      prevBookPageRef.current = book.currentPage;
     }
-  }, [book, book?.currentPage]);
+  }, [book?.currentPage]);
+
+  // Limpiar traducciones proactivas si el idioma vuelve al original o el libro cambia
+  useEffect(() => {
+    if (currentBookLanguage === sourceBookLanguage || !book) {
+      console.log('[CLEANUP_EFFECT] Clearing proactive translations.');
+      setProactivelyTranslatedNextPageContent(null);
+      setProactivelyTranslatedForPageNumber(null);
+    }
+  }, [currentBookLanguage, sourceBookLanguage, book]);
 
   // Guardar la última página leída al desmontar el componente
   useEffect(() => {
@@ -364,14 +508,17 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         setSelectedText(selectedRange);
         
         // Activar automáticamente la traducción
-        translateTextSelection(selectedRange);
+        // Aquí, sourceLanguageCode es currentBookLanguage y targetLanguageCode es 'es'
+        translateTextSelection(selectedRange, currentBookLanguage, 'es');
       }
     } else {
       // Modo normal de traducción de palabra individual
     if (word.text.trim() === '') return;
     
-    setSelectedWord(word.text);
-      setSelectedWordIndex(index); // Guardar el índice de la palabra seleccionada
+    // Para el tooltip de palabra individual, traducimos del currentBookLanguage al español
+    // La palabra que se muestra en el tooltip (selectedWord) es la del texto (que podría estar ya traducido)
+    setSelectedWord(word.text); 
+    setSelectedWordIndex(index); 
     setTooltipAnchor(event.currentTarget);
     setIsTooltipOpen(true);
     setShowControls(true);
@@ -380,17 +527,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       clearTimeout(controlsTimeoutRef.current);
     }
     }
-  }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords]);
+  }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords, translateWord, currentBookLanguage]); // Añadir currentBookLanguage y translateWord
 
   // Función para traducir el texto seleccionado automáticamente
-  const translateTextSelection = async (text: string) => {
+  const translateTextSelection = async (text: string, sourceLang: string, targetLang: string) => {
     if (!text) return;
     
     setShowAIChatModal(false); // Asegurarse de que el chat esté cerrado
     setIsTranslating(true);
     
     try {
-      const result = await translateParagraph(text);
+      // Usamos translateParagraph del hook, que ahora toma source y target
+      const result = await translateParagraph(text, sourceLang, targetLang);
       if (result && typeof result === 'object' && 'translated' in result) {
         setTranslatedText(result.translated);
         setShowTranslation(true);
@@ -438,24 +586,23 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   };
 
   // Reproducir audio de la traducción usando TTSService
-  const playTranslationAudio = async (language: 'en' | 'es') => {
-    if (language === 'en' && !selectedText) return;
-    if (language === 'es' && !translatedText) return;
-    
+  const playTranslationAudio = async (language: 'en' | 'es' | string, textToPlay?: string) => {
+    const textForAudio = textToPlay || (language === currentBookLanguage ? selectedText : translatedText);
+    if (!textForAudio) return;
+
     try {
-      // Detener cualquier audio previo
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
-      
+
       setIsPlayingAudio(language);
-      const textToSpeak = language === 'en' ? selectedText : translatedText;
       const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      
+      const langCodeForTTS = language === 'es' ? 'es' : currentBookLanguage;
+
       if (apiKey) {
-        await TTSService.speakText(textToSpeak, language);
+        await TTSService.speakText(textForAudio, langCodeForTTS as 'en' | 'es'); 
       } else {
-        TTSService.speakTextUsingWebSpeech(textToSpeak, language);
+        TTSService.speakTextUsingWebSpeech(textForAudio, langCodeForTTS as 'en' | 'es');
       }
     } catch (error) {
       console.error('Error al reproducir audio:', error);
@@ -669,7 +816,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       return (
         <div 
           onClick={() => setOcrIndicatorMinimized(false)}
-          className="fixed bottom-28 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-800 text-white px-3 py-2 rounded-lg shadow-lg flex items-center z-[200] cursor-pointer hover:bg-blue-700 transition-all"
+          className="fixed bottom-28 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-800 text-white px-3 py-2 rounded-lg shadow-lg flex items-center z-[1030] cursor-pointer hover:bg-blue-700 transition-all"
         >
           <Loader2 className="animate-spin h-4 w-4 mr-2" />
           <span className="text-xs font-medium">OCR: {progressPercent}%</span>
@@ -745,6 +892,46 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   // State for AI Chat Modal
   const [showAIChatModal, setShowAIChatModal] = useState(false);
 
+  // Estados para el popover de selección de idioma
+  const [isLanguagePopoverOpen, setIsLanguagePopoverOpen] = useState(false);
+  const languageButtonRef = useRef<HTMLButtonElement>(null);
+
+  const languageOptions = useMemo(() => [
+    { code: "en", name: getLanguageName("en") },
+    { code: "es", name: getLanguageName("es") },
+    { code: "it", name: getLanguageName("it") },
+    { code: "fr", name: getLanguageName("fr") },
+    { code: "ja", name: getLanguageName("ja") },
+    { code: "de", name: getLanguageName("de") },
+    { code: "pt", name: getLanguageName("pt") },
+    { code: "ru", name: getLanguageName("ru") },
+    { code: "zh", name: getLanguageName("zh") },
+    { code: "ar", name: getLanguageName("ar") },
+    { code: "hi", name: getLanguageName("hi") },
+    { code: "ko", name: getLanguageName("ko") },
+    { code: "nl", name: getLanguageName("nl") },
+    { code: "sv", name: getLanguageName("sv") },
+    { code: "tr", name: getLanguageName("tr") },
+  ], []);
+
+  const { refs: langPopoverRefs, floatingStyles: langPopoverFloatingStyles, context: langPopoverContext } = useFloating({
+    open: isLanguagePopoverOpen,
+    onOpenChange: setIsLanguagePopoverOpen,
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    placement: 'bottom-start',
+    whileElementsMounted: autoUpdate,
+  });
+
+  const langClick = useClick(langPopoverContext);
+  const langDismiss = useDismiss(langPopoverContext);
+  const langRole = useRole(langPopoverContext, { role: 'listbox' });
+
+  const { getReferenceProps: getLangReferenceProps, getFloatingProps: getLangFloatingProps } = useInteractions([
+    langClick,
+    langDismiss,
+    langRole,
+  ]);
+
   if (!book) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
@@ -810,46 +997,90 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       )}
       
       {/* Barra de navegación de lectura */}
-      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
-        <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between">
+      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-[1010] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
+        <div className="max-w-3xl mx-auto px-4 py-2 flex items-center space-x-2 sm:space-x-3">
           {/* Botón izquierdo: volver o salir */}
-          <div className="w-1/3 flex justify-start">
-            {isFullScreen ? (
-              <button
-                onClick={exitFullScreen}
-                className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-                aria-label="Salir de pantalla completa"
-              >
-                <ArrowLeft size={18} />
-              </button>
-            ) : (
-              <button
-                onClick={() => navigate('/books')}
-                className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-                aria-label="Volver a la biblioteca"
-              >
-                <Home size={18} />
-              </button>
+          {isFullScreen ? (
+            <button
+              onClick={exitFullScreen}
+              className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
+              aria-label="Salir de pantalla completa"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate('/books')}
+              className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
+              aria-label="Volver a la biblioteca"
+            >
+              <Home size={18} />
+            </button>
+          )}
+
+          {/* Separador Añadido */}
+          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
+
+          {/* Botón Selector de Idioma Circular */}
+          <div className="relative flex-shrink-0">
+            <button
+              ref={langPopoverRefs.setReference}
+              {...getLangReferenceProps()}
+              type="button"
+              className="w-auto min-w-[36px] h-9 px-2 flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title={`Idioma actual: ${getLanguageName(currentBookLanguage)}`}
+            >
+              {currentBookLanguage.toUpperCase()}
+              <ChevronDown size={14} className="ml-1 opacity-75" />
+            </button>
+            {isLanguagePopoverOpen && (
+              <FloatingFocusManager context={langPopoverContext} modal={false}>
+                <div
+                  ref={langPopoverRefs.setFloating}
+                  style={langPopoverFloatingStyles}
+                  {...getLangFloatingProps()}
+                  className="z-[1020] bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden py-1 max-h-60 overflow-y-auto focus:outline-none"
+                  aria-orientation="vertical"
+                >
+                  {languageOptions.map((lang) => (
+                    <button
+                      key={lang.code}
+                      role="option"
+                      aria-selected={currentBookLanguage === lang.code}
+                      onClick={() => {
+                        setCurrentBookLanguage(lang.code);
+                        setIsLanguagePopoverOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm font-medium flex items-center justify-between
+                        ${currentBookLanguage === lang.code 
+                          ? 'bg-purple-100 dark:bg-purple-700 text-purple-700 dark:text-purple-100' 
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}
+                      `}
+                    >
+                      {lang.name}
+                      {currentBookLanguage === lang.code && <Check size={16} className="text-purple-600 dark:text-purple-200" />}
+                    </button>
+                  ))}
+                </div>
+              </FloatingFocusManager>
             )}
           </div>
           
-          {/* Línea divisoria vertical */}
-          <div className="hidden sm:block h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
+          {/* Separador */}
+          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
           
-          {/* Información central del libro */}
-          <div className="w-1/3 flex justify-center items-center">
-            <div className="text-center">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {book.currentPage} / {book.totalPages}
-              </span>
-            </div>
+          {/* Información central: Título del Libro */}
+          <div className="flex-grow text-center overflow-hidden px-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" title={book.title}>
+              {book.title}
+            </span>
           </div>
 
-          {/* Línea divisoria vertical */}
-          <div className="hidden sm:block h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
+          {/* Separador */}
+          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
 
           {/* Controles de tema y pantalla completa */}
-          <div className="w-1/3 flex justify-end items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-shrink-0">
             <button
               onClick={toggleTheme}
               className="p-1.5 rounded-full text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
@@ -868,12 +1099,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         </div>
       </div>
 
-      {/* Línea divisoria */}
-      <div className={`fixed ${!isFullScreen ? 'md:top-[4.5rem] top-[4.5rem]' : 'top-12'} left-0 right-0 h-[1px] bg-gray-300/80 dark:bg-gray-600/80 z-9`}></div>
-
       {/* Indicador de modo selección */}
       {isSelectingTextRange && showSelectionMessage && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[500] animate-fadeIn">
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1040] animate-fadeIn">
           <div className="bg-purple-600/90 text-white py-2 px-5 rounded-full shadow-lg flex items-center space-x-2 max-w-[250px] text-center">
             {startWordIndex === null ? (
               <>
@@ -908,7 +1136,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       <OcrIndicator isVisible={showOcrProcessedMessage && !!book?.processedWithOcr && !book?.ocrInProgress} />
       <OcrProgressIndicator book={book} />
 
-      {/* Contenido principal */}
+      {/* Contenido principal Refactorizado */}
       <div 
         className={`flex-grow overflow-y-auto p-4 ${
           !isFullScreen 
@@ -921,21 +1149,15 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           className="max-w-3xl mx-auto text-justify px-2"
           style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
         >
-          {book && book.pages[book.currentPage - 1]?.content.includes('[Contenido de la página') || 
-           book.pages[book.currentPage - 1]?.content.includes('[Procesando OCR para página') ? (
-            // Si está en proceso de OCR, no mostrar el contenido de fondo, solo un área vacía
+          {isCurrentPageTranslating ? (
+            <PageLoadingIndicator languageName={getLanguageName(currentBookLanguage)} />
+          ) : book.pages[book.currentPage - 1]?.content.startsWith('[Contenido de la página') || book.pages[book.currentPage - 1]?.content.startsWith('[Procesando OCR para página') ? (
             book.ocrInProgress ? (
               <div className="flex items-center justify-center min-h-[50vh]">
-                {/* No mostramos nada aquí, ya que el popup de OCR será suficiente */}
+                {/* Popup de OCR es suficiente */}
               </div>
             ) : (
-              // Si no está en proceso de OCR pero tiene el marcador, mostrar el contenido original
               <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg border border-gray-300 dark:border-gray-700 text-center">
-                <div className="mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
                 {book.pages[book.currentPage - 1]?.content.split('\n').map((line, idx) => (
                   <React.Fragment key={idx}>
                     <p className={`${idx === 0 ? 'font-medium text-lg text-gray-700 dark:text-gray-300' : 'text-gray-600 dark:text-gray-400'} mb-2`}>
@@ -946,14 +1168,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                 ))}
               </div>
             )
-          ) : (
-            // Contenido normal
+          ) : currentPageContentForDisplay ? (
             allWords.map((word, idx) => (
               <React.Fragment key={`${word}-${idx}`}>
                 <span
                   className={`
                     word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
-                    border mx-[2px] 
+                    border mx-[2px] my-[1px]
                     ${isSelectingTextRange 
                       ? startWordIndex === idx 
                         ? 'bg-purple-600 text-white border-purple-700'
@@ -961,18 +1182,20 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                           ? 'bg-purple-100 dark:bg-purple-900/40 text-gray-800 dark:text-white border-purple-200 dark:border-purple-800'
                           : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60'
                       : idx === selectedWordIndex && isTooltipOpen
-                        ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' // Estilo para palabra seleccionada para traducción
+                        ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' 
                         : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/30'
                     }
                   `}
                   onClick={(e) => handleWordClick({ text: word, index: idx }, e, idx)}
-                  title={!isSelectingTextRange ? "Pulsa para ver traducción" : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
+                  title={!isSelectingTextRange ? `Traducir "${word}" del ${getLanguageName(currentBookLanguage)} al español` : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
                 >
                   {word}
                 </span>
                 {' '}
               </React.Fragment>
             ))
+          ) : (
+            <div className="text-center py-10 text-gray-500 dark:text-gray-400">No hay contenido para mostrar o el libro está vacío.</div>
           )}
         </div>
       </div>
@@ -988,7 +1211,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               className={`p-1.5 rounded-full border-2 flex items-center transition-colors duration-150 focus:outline-none
                 ${isSelectingTextRange 
                   ? 'border-teal-400 text-teal-500 bg-teal-50 dark:bg-teal-900/30' 
-                  : 'border-gray-400 text-gray-500 hover:border-gray-500 hover:text-gray-600 dark:border-gray-500 dark:text-gray-400 dark:hover:border-gray-400'
+                  : 'border-gray-400 text-gray-500 hover:border-gray-500 hover:text-gray-600 dark:border-gray-500 dark:text-gray-400'
                 }`}
               title={isSelectingTextRange ? "Cancelar selección de párrafo" : "Seleccionar párrafo para traducir"}
             >
@@ -1024,8 +1247,10 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           >
               <ArrowLeft size={18} />
             </button>
-            <span className="mx-2 text-sm text-gray-700 dark:text-gray-300 font-medium">
-              {book.currentPage} / {book.totalPages}
+            <span className="mx-3 text-sm text-gray-700 dark:text-gray-300 font-medium tabular-nums">
+              {book.currentPage}
+              <span className="px-1">/</span>
+              {book.totalPages}
             </span>
             <button
               onClick={handleNextPage}
@@ -1065,6 +1290,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       {/* WordTooltip para mostrar traducciones de palabras individuales */}
       <WordTooltip
         word={selectedWord}
+        sourceLanguage={currentBookLanguage}
+        sourceLanguageName={getLanguageName(currentBookLanguage)}
+        targetLanguage="es"
         isOpen={isTooltipOpen}
         onClose={closeTooltip}
         referenceElement={tooltipAnchor}
@@ -1088,7 +1316,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         >
           {/* Encabezado */}
           <div className="flex justify-between items-center bg-gradient-to-r from-purple-900 to-blue-900 px-4 py-3 rounded-t-lg">
-            <div className="text-sm text-gray-100 font-medium">Texto original</div>
+            <div className="text-sm text-gray-100 font-medium capitalize">Texto en {getLanguageName(currentBookLanguage)}</div>
           <button 
               onClick={closeTranslation}
               className="text-gray-300 hover:text-white focus:outline-none"
@@ -1139,19 +1367,20 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                   <span>Consultar IA</span>
                 </button>
                 <button
-                  onClick={isPlayingAudio === 'en' ? stopAudio : () => playTranslationAudio('en')}
-                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'en' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded text-xs`}
+                  onClick={isPlayingAudio === currentBookLanguage ? stopAudio : () => playTranslationAudio(currentBookLanguage, selectedText)}
+                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === currentBookLanguage ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded text-xs`}
+                  disabled={isPlayingAudio === 'es' || !['en', 'es', 'it', 'fr', 'ja', 'de', 'pt'].includes(currentBookLanguage) }
                 >
-                  <span>{isPlayingAudio === 'en' ? "Detener" : "Inglés"}</span>
-                  {isPlayingAudio === 'en' ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  <span className="capitalize">{isPlayingAudio === currentBookLanguage ? "Detener" : getLanguageName(currentBookLanguage)}</span>
+                  {isPlayingAudio === currentBookLanguage ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
                 
                 <button
-                  onClick={isPlayingAudio === 'es' ? stopAudio : () => playTranslationAudio('es')}
+                  onClick={isPlayingAudio === 'es' ? stopAudio : () => playTranslationAudio('es', translatedText)}
                   className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'es' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-blue-900/50 hover:bg-blue-800'} rounded text-xs`}
                   disabled={isPlayingAudio === 'en'}
                 >
-                  <span>{isPlayingAudio === 'es' ? "Detener" : "Español"}</span>
+                  <span>Español</span>
                   {isPlayingAudio === 'es' ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
               </div>
@@ -1226,9 +1455,35 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         .reader-fullscreen .reader-controls {
           bottom: 0 !important;
         }
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.75; transform: scale(1.03); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 2.2s infinite ease-in-out;
+        }
       `}</style>
     </div>
   );
 };
+
+const PageLoadingIndicator: React.FC<{ languageName: string }> = ({ languageName }) => (
+  <div className="flex flex-col items-center justify-center min-h-[calc(100vh-250px)] text-center p-4">
+    <div className="flex items-center justify-center space-x-3 mb-5">
+      <img
+        src="/img/icono_lexingo.png" // Asegúrate que esta ruta es correcta
+        alt="Lexingo AI"
+        className="w-10 h-10" // Icono más pequeño
+      />
+      <Loader2 className="h-8 w-8 animate-spin text-purple-600 dark:text-purple-400" />
+    </div>
+    <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300">
+      Lexingo AI está traduciendo a {languageName}...
+    </h2>
+    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Un momento, por favor.
+    </p>
+  </div>
+);
 
 export default Reader;

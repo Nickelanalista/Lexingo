@@ -1,17 +1,17 @@
 import { useState, useCallback } from 'react';
 import { TranslationResult } from '../types';
-import OpenAIService from '../services/openai';
+import { OpenAIService } from '../services/openai';
 
 export const useTranslator = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const translateWord = useCallback(async (word: string): Promise<TranslationResult | null> => {
+  const translateWord = useCallback(async (word: string, sourceLanguageCode: string, targetLanguageCode: string): Promise<TranslationResult | null> => {
     if (!word.trim()) return null;
     
     // Si el texto es demasiado largo, usamos la función para párrafos
     if (word.split(/\s+/).length > 5) {
-      return translateParagraph(word);
+      return translateParagraph(word, sourceLanguageCode, targetLanguageCode);
     }
     
     setIsTranslating(true);
@@ -24,7 +24,7 @@ export const useTranslator = () => {
         throw new Error('OpenAI API key is missing. Please add VITE_OPENAI_API_KEY to your .env file.');
       }
       
-      const translatedText = await OpenAIService.translateWord(word);
+      const translatedText = await OpenAIService.translateWord(word, sourceLanguageCode, targetLanguageCode);
       
       const result: TranslationResult = {
         original: word,
@@ -44,7 +44,7 @@ export const useTranslator = () => {
   }, []);
 
   // Función para traducir párrafos o frases más largas
-  const translateParagraph = useCallback(async (text: string): Promise<TranslationResult | null> => {
+  const translateParagraph = useCallback(async (text: string, sourceLanguageCode: string, targetLanguageCode: string): Promise<TranslationResult | null> => {
     if (!text.trim()) return null;
     
     setIsTranslating(true);
@@ -57,7 +57,7 @@ export const useTranslator = () => {
         throw new Error('OpenAI API key is missing. Please add VITE_OPENAI_API_KEY to your .env file.');
       }
       
-      const translatedText = await OpenAIService.translateParagraph(text);
+      const translatedText = await OpenAIService.translateParagraph(text, sourceLanguageCode, targetLanguageCode);
       
       const result: TranslationResult = {
         original: text,
@@ -70,6 +70,22 @@ export const useTranslator = () => {
       const errorMessage = err instanceof Error ? err.message : 'Error al traducir el texto';
       setError(errorMessage);
       console.error('Error de traducción:', errorMessage);
+      return null;
+    } finally {
+      setIsTranslating(false);
+    }
+  }, []);
+
+  // Nueva función para traducir contenido de página completo
+  const translatePageText = useCallback(async (text: string, targetLanguageCode: string, sourceLanguageCode: string = 'en'): Promise<string | null> => {
+    setIsTranslating(true);
+    setError(null);
+    try {
+      const translatedText = await OpenAIService.translateTextToLanguage(text, targetLanguageCode, sourceLanguageCode);
+      return translatedText;
+    } catch (err) {
+      setError(err as Error);
+      console.error(`Error translating page content from ${sourceLanguageCode} to ${targetLanguageCode} in useTranslator:`, err);
       return null;
     } finally {
       setIsTranslating(false);
@@ -148,6 +164,7 @@ export const useTranslator = () => {
   return {
     translateWord,
     translateParagraph,
+    translatePageText,
     simulateTranslation,
     isTranslating,
     error
