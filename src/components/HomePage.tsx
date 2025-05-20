@@ -1,41 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, ChevronLeft, ChevronRight, Upload, Clock, Plus, Award, BookOpen } from 'lucide-react';
+import { Book, ChevronLeft, ChevronRight, Clock, Award, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useBookContext } from '../context/BookContext';
-import FileUploader from './PDFUploader';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Inicializar PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
 
 export default function HomePage() {
   const [recentBooks, setRecentBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [communityBooks, setCommunityBooks] = useState([
     {
-      id: 'comm1',
-      title: 'El principito',
-      author: 'Antoine de Saint-Exupéry',
-      cover: 'https://covers.openlibrary.org/b/id/7373399-L.jpg',
-      votes: 247
-    },
-    {
-      id: 'comm2',
-      title: 'Cien años de soledad',
-      author: 'Gabriel García Márquez',
-      cover: 'https://covers.openlibrary.org/b/id/10419087-L.jpg',
-      votes: 189
+      id: 'comm4',
+      title: 'The Alchemist',
+      author: 'Paulo Coelho',
+      cover: '/img/books/the-alchemist.jpg',
+      filename: 'the-alchemist.pdf',
+      totalPages: 189
     },
     {
       id: 'comm3',
-      title: 'Don Quijote de la Mancha',
-      author: 'Miguel de Cervantes',
-      cover: 'https://covers.openlibrary.org/b/id/12639849-L.jpg',
-      votes: 172
+      title: 'The Adventures of Sherlock Holmes',
+      author: 'Arthur Conan Doyle',
+      cover: '/img/books/the-adventures-of-sherlock-holmes.jpg',
+      filename: 'the-adventures-of-sherlock-holmes.pdf',
+      totalPages: 307
     },
     {
-      id: 'comm4',
-      title: 'Harry Potter y la Piedra Filosofal',
-      author: 'J.K. Rowling',
-      cover: 'https://covers.openlibrary.org/b/id/10521270-L.jpg',
-      votes: 155
+      id: 'comm1',
+      title: 'Natural Remedies',
+      author: 'Barbara O\'Neill',
+      cover: '/img/books/barbara-oneill-natural-remedies.jpg',
+      filename: 'barbara-oneill-natural-remedies.pdf',
+      totalPages: 186
+    },
+    {
+      id: 'comm2',
+      title: 'Rich Dad\'s Retirement Lie',
+      author: 'Robert Kiyosaki',
+      cover: '/img/books/robert-kiyosaki-rich-dad-49-retirement.jpg',
+      filename: 'robert-kiyosaki-rich-dad-49-retirement.pdf',
+      totalPages: 215
     }
   ]);
   const navigate = useNavigate();
@@ -65,32 +75,243 @@ export default function HomePage() {
 
   const handleOpenBook = async (book) => {
     try {
-      let parsedContent;
-      try {
-        parsedContent = JSON.parse(book.content);
-      } catch (e) {
-        console.error('Error parsing book content:', e);
-        parsedContent = [];
-      }
-
-      const bookData = {
-        id: book.id,
-        title: book.title,
-        pages: parsedContent,
-        currentPage: book.current_page || 1,
-        totalPages: book.total_pages || parsedContent.length,
-        coverUrl: book.cover_url,
-        lastRead: book.last_read,
-        bookmarked: book.bookmarked,
-        bookmark_page: book.bookmark_page,
-        bookmark_position: book.bookmark_position,
-        bookmark_updated_at: book.bookmark_updated_at
-      };
+      // Indicar que estamos cargando
+      setLoading(true);
+      console.log(`Abriendo libro: ${book.title}, página guardada: ${book.current_page}`);
       
-      loadBookAndSkipEmptyPages(bookData);
-      navigate('/reader');
+      // Verificar que la página actual es válida
+      let currentPage = book.current_page || 1;
+      
+      // Asegurarnos de que la página está dentro del rango válido
+      if (currentPage > book.total_pages) {
+        console.log(`La página guardada ${currentPage} excede el total (${book.total_pages}), reseteando a 1`);
+        currentPage = 1;
+      }
+      
+      // Limpiar el libro actual antes de cargar el nuevo
+      setBook(null);
+      
+      // Construir los datos del libro
+      try {
+        const bookContent = JSON.parse(book.content);
+        console.log(`Libro cargado: ${book.title} con ${bookContent.length} páginas`);
+        
+        const bookData = {
+          id: book.id,
+          title: book.title,
+          pages: bookContent,
+          currentPage: currentPage,
+          totalPages: book.total_pages,
+          coverUrl: book.cover_url,
+          lastRead: book.last_read,
+          bookmarked: book.bookmarked,
+          bookmark_page: book.bookmark_page,
+          bookmark_position: book.bookmark_position,
+          bookmark_updated_at: book.bookmark_updated_at
+        };
+        
+        // Cargar el libro
+        loadBookAndSkipEmptyPages(bookData);
+        
+        // Esperar un momento antes de navegar
+        setTimeout(() => {
+          console.log('Navegando a la página del lector');
+          navigate('/reader');
+        }, 300);
+      } catch (parseError) {
+        console.error('Error al parsear el contenido del libro:', parseError);
+        setLoading(false);
+      }
     } catch (error) {
-      console.error('Error opening book:', error);
+      console.error('Error al abrir el libro:', error);
+      setLoading(false);
+    }
+  };
+
+  // Función para generar un UUID v4 válido
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
+  // Función para procesar un PDF y extraer su contenido
+  const processPDF = async (pdfPath: string, totalPages: number): Promise<any[]> => {
+    try {
+      console.log(`Procesando PDF: ${pdfPath}`);
+      
+      // Cargar el PDF desde la URL pública
+      const loadingTask = pdfjsLib.getDocument(pdfPath);
+      const pdf = await loadingTask.promise;
+      
+      // Verificar que el número de páginas coincida
+      const pdfTotalPages = pdf.numPages;
+      console.log(`PDF cargado con ${pdfTotalPages} páginas (esperadas: ${totalPages})`);
+      
+      // Crear un array para almacenar el contenido de las páginas
+      const pages = [];
+      
+      // Procesar cada página
+      for (let i = 1; i <= pdfTotalPages; i++) {
+        try {
+          console.log(`Extrayendo texto de la página ${i}`);
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          // Extraer el texto
+          const pageText = textContent.items
+            .map((item: any) => 'str' in item ? item.str : '')
+            .join(' ');
+          
+          // Añadir la página al array
+          pages.push({
+            content: pageText.trim() || `[Página ${i} sin texto extraíble]`
+          });
+        } catch (pageError) {
+          console.error(`Error procesando página ${i}:`, pageError);
+          pages.push({
+            content: `[Error al procesar la página ${i}]`
+          });
+        }
+      }
+      
+      // Si el PDF tiene menos páginas que las esperadas, añadir páginas vacías
+      if (pdfTotalPages < totalPages) {
+        for (let i = pdfTotalPages + 1; i <= totalPages; i++) {
+          pages.push({
+            content: `[Página ${i} (no existe en el PDF)]`
+          });
+        }
+      }
+      
+      return pages;
+    } catch (error) {
+      console.error('Error procesando PDF:', error);
+      
+      // En caso de error, devolver páginas con mensajes de error
+      return Array.from({ length: totalPages }, (_, i) => ({
+        content: `Error al cargar el PDF. Página ${i+1} de ${totalPages}.`
+      }));
+    }
+  };
+
+  const handleOpenCommunityBook = async (book) => {
+    try {
+      // Mostramos una animación de carga
+      setLoading(true);
+      console.log(`Abriendo libro comunitario: ${book.title}`);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No hay usuario autenticado');
+        setLoading(false);
+        return;
+      }
+      
+      // Verificamos si ya existe este libro en la biblioteca del usuario
+      const { data: existingBooks, error: queryError } = await supabase
+        .from('books')
+        .select('*')
+        .eq('title', book.title)
+        .eq('user_id', user.id);
+      
+      if (queryError) {
+        console.error('Error al buscar libros existentes:', queryError);
+        setLoading(false);
+        return;
+      }
+      
+      if (existingBooks && existingBooks.length > 0) {
+        // Si ya existe, cargamos ese libro
+        console.log('El libro ya existe en la biblioteca del usuario, cargándolo...');
+        handleOpenBook(existingBooks[0]);
+      } else {
+        console.log('El libro no existe en la biblioteca del usuario, creándolo...');
+        
+        // Construir la ruta completa al PDF
+        const pdfPath = `/books/${book.filename}`;
+        console.log(`Ruta del PDF: ${pdfPath}`);
+        
+        // Procesar el PDF para extraer el contenido real
+        console.log('Procesando PDF para extraer contenido real...');
+        const pdfPages = await processPDF(pdfPath, book.totalPages);
+        console.log(`PDF procesado. Se extrajeron ${pdfPages.length} páginas`);
+        
+        // Verificar que se obtuvo contenido
+        if (!pdfPages || pdfPages.length === 0) {
+          console.error('No se pudo extraer contenido del PDF');
+          setLoading(false);
+          return;
+        }
+        
+        // Generamos un UUID válido para el ID del libro
+        const bookId = generateUUID();
+        console.log(`ID UUID generado para el libro: ${bookId}`);
+        
+        // Creamos el registro en la base de datos
+        const newBook = {
+          id: bookId,
+          title: book.title,
+          user_id: user.id,
+          cover_url: book.cover,
+          total_pages: pdfPages.length,
+          current_page: 1,
+          content: JSON.stringify(pdfPages),
+          created_at: new Date().toISOString(),
+          last_read: new Date().toISOString()
+        };
+        
+        console.log('Insertando libro en la base de datos:', newBook.title);
+        
+        // Insertar en la base de datos
+        const { data: insertedBook, error: insertError } = await supabase
+          .from('books')
+          .insert(newBook)
+          .select();
+          
+        if (insertError) {
+          console.error('Error al guardar el libro comunitario:', insertError);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Libro guardado correctamente en la base de datos, ID:', insertedBook[0]?.id);
+        
+        // Limpiar el libro actual antes de cargar el nuevo
+        setBook(null);
+        
+        // Cargar este libro para lectura
+        const bookData = {
+          id: bookId, // Asegurarnos de usar el mismo UUID
+          title: book.title,
+          pages: pdfPages,
+          currentPage: 1,
+          totalPages: pdfPages.length,
+          coverUrl: book.cover,
+          lastRead: new Date().toISOString(),
+          bookmarked: false
+        };
+        
+        console.log('Cargando libro en el contexto:', bookData.title);
+        loadBookAndSkipEmptyPages(bookData);
+        
+        // Actualizamos la lista de libros recientes
+        console.log('Actualizando lista de libros recientes');
+        fetchRecentBooks();
+      }
+      
+      // Esperamos un momento para asegurar que el libro se ha cargado correctamente
+      setTimeout(() => {
+        // Navegamos al lector
+        console.log('Navegando a la página del lector');
+        navigate('/reader');
+      }, 500);
+    } catch (error) {
+      console.error('Error al abrir libro comunitario:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -189,31 +410,6 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Upload Section */}
-        <div className="space-y-3">
-          <div className="flex items-center mb-4">
-            <Plus className="w-4 h-4 mr-2 text-purple-500" />
-            <h2 className="text-lg font-medium text-white">
-              Cargar nuevo libro
-            </h2>
-          </div>
-          
-          <div className="flex gap-4">
-            <div className="w-4/5">
-              <FileUploader onFileProcessed={fetchRecentBooks} />
-            </div>
-            <button
-              onClick={() => navigate('/books')}
-              className="w-1/5 p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-all duration-300 group flex flex-col items-center justify-center"
-            >
-              <Book className="w-6 h-6 text-purple-500 mb-2 group-hover:text-purple-400" />
-              <span className="block text-sm font-medium text-white text-center">
-                Mis Libros
-              </span>
-            </button>
-          </div>
-        </div>
-
         {/* Community Books Section */}
         <div className="space-y-3 pb-12">
           <div className="flex items-center justify-between">
@@ -233,8 +429,9 @@ export default function HomePage() {
           
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {communityBooks.map((book) => (
-              <div
+              <button
                 key={book.id}
+                onClick={() => handleOpenCommunityBook(book)}
                 className="bg-gray-800 rounded-lg overflow-hidden text-left w-full hover:ring-2 hover:ring-purple-500/50 transition-all duration-300 group"
               >
                 <div className="aspect-[3/4] h-[180px] relative overflow-hidden">
@@ -243,23 +440,17 @@ export default function HomePage() {
                     alt={book.title}
                     className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
                   />
-                  
-                  {/* Votes badge */}
-                  <div className="absolute top-2 right-2 bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center">
-                    <Award className="w-3 h-3 mr-1" />
-                    {book.votes}
-                  </div>
                 </div>
                 
                 <div className="p-3">
-                  <h3 className="font-medium text-white text-sm mb-1 line-clamp-1">
+                  <h3 className="font-medium text-white text-sm line-clamp-1">
                     {book.title}
                   </h3>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-400 line-clamp-1">
                     {book.author}
                   </p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { OpenAIService } from '../services/openai';
 import { X, Send, Loader2, Sparkles, UserCircle2, Mic, StopCircle, Square, SignalHigh } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface AIChatModalProps {
   isOpen: boolean;
@@ -11,6 +12,14 @@ interface AIChatModalProps {
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+}
+
+// Interfaz para el perfil del usuario
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 // Helper function to parse markdown-like syntax into React nodes
@@ -60,6 +69,10 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
   const chatContentRef = useRef<HTMLDivElement>(null);
   const initialGreetingSentRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Estado para el perfil del usuario
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Estado para Speech-to-Text
   const [isRecording, setIsRecording] = useState(false);
@@ -83,7 +96,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
 
         const systemMessage: Message = {
           role: 'system',
-          content: "Eres Lexi, un asistente de IA amigable y experto en idiomas integrado en la aplicación de lectura Lexingo. Tu objetivo es ayudar a los usuarios a comprender mejor los textos en inglés que están leyendo. El usuario te proporcionará un fragmento de texto. Debes iniciar la conversación saludando amablemente. Luego, PRESENTA CLARAMENTE el texto que el usuario compartió envolviéndolo EXACTAMENTE así: [USER_TEXT_START]el texto del usuario aquí[USER_TEXT_END]. No añadas ningún otro carácter o formato alrededor de estas etiquetas especiales. Después de presentar el texto, pregunta de forma abierta y útil cómo puedes ayudar con ese fragmento específico. Ofrece algunas sugerencias concretas, como analizar la gramática, explicar frases complejas, dar sinónimos de palabras clave, o profundizar en el significado de alguna parte. Mantén un tono conversacional, servicial y alentador. Genera toda esta respuesta inicial en una sola burbuja de chat."
+          content: "Eres Lexi, un asistente de IA amigable y experto en idiomas integrado en la aplicación de lectura Lexingo. Tu objetivo es ayudar a los usuarios a comprender mejor los textos que están leyendo. El usuario te proporcionará un fragmento de texto.\nDebes iniciar la conversación saludando amablemente.\nLuego, PRESENTA CLARAMENTE el texto que el usuario compartió envolviéndolo EXACTAMENTE así: [USER_TEXT_START]el texto del usuario aquí[USER_TEXT_END]. No añadas ningún otro carácter o formato alrededor de estas etiquetas especiales.\nDespués de presentar el texto, DEBES continuar tu mensaje EXACTAMENTE con el siguiente formato y texto para las sugerencias (puedes ajustar la referencia a \'este fragmento\' si es natural, pero mantén la estructura de la lista numerada):\n\n'¿En qué puedo ayudarte con este fragmento? Por ejemplo, puedo:\n1. Analizar la gramática.\n2. Explicar frases complejas.\n3. Dar sinónimos de palabras clave.\n4. Profundizar en el significado de alguna parte.\n\n¡Dime qué te interesa explorar o simplemente indica el número de la opción!\'\n\nMantén un tono conversacional, servicial y alentador en tu saludo inicial y en la frase final. Genera toda esta respuesta inicial en una sola burbuja de chat."
         };
         const initialUserMessageForAI: Message = {
           role: 'user',
@@ -245,6 +258,63 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
     };
   }, []);
 
+  // Obtener el perfil del usuario
+  useEffect(() => {
+    if (isOpen) {
+      fetchUserProfile();
+    }
+  }, [isOpen]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error al obtener el perfil del usuario:', error);
+        return;
+      }
+
+      setUserProfile(data);
+      
+      // Si hay una URL de avatar, añadir timestamp para evitar caché
+      if (data.avatar_url) {
+        const timestamp = new Date().getTime();
+        const cachedUrl = `${data.avatar_url}?t=${timestamp}`;
+        setAvatarUrl(cachedUrl);
+      }
+    } catch (error) {
+      console.error('Error al obtener el perfil del usuario:', error);
+    }
+  };
+
+  // Función para obtener las iniciales del usuario
+  const getUserInitials = () => {
+    if (!userProfile) return 'U';
+    
+    if (userProfile.name) {
+      return userProfile.name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase();
+    }
+    
+    return userProfile.email[0].toUpperCase();
+  };
+  
+  // Manejar error al cargar la imagen
+  const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('Error al cargar el avatar en el chat');
+    setAvatarUrl(null);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -328,9 +398,22 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
                   {isAssistant ? (
                     <img src="/img/icono_lexingo.png" alt="Lexi" className="w-8 h-8 rounded-full border-2 border-purple-400 self-start flex-shrink-0"/>
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold self-start flex-shrink-0">
-                      U {/* Placeholder for User Avatar */}
-                    </div>
+                    <>
+                      {avatarUrl ? (
+                        <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-blue-400 self-start flex-shrink-0">
+                          <img 
+                            src={avatarUrl}
+                            alt="Usuario"
+                            className="w-full h-full object-cover"
+                            onError={handleAvatarError}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold self-start flex-shrink-0">
+                          {getUserInitials()}
+                        </div>
+                      )}
+                    </>
                   )}
                   <div 
                     className={`max-w-[75%] p-3 rounded-xl shadow ${msg.role === 'user' 

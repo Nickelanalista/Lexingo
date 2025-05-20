@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Camera, Eye, EyeOff, Loader2, Key, RefreshCw, LogOut } from 'lucide-react';
+import { User, Mail, Camera, Eye, EyeOff, Loader2, Key, RefreshCw, LogOut, AlertTriangle } from 'lucide-react';
+
+// Evento personalizado para notificar actualización de avatar
+export const AVATAR_UPDATED_EVENT = 'AVATAR_UPDATED';
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
@@ -76,9 +79,9 @@ export default function ProfilePage() {
       const file = e.target.files[0];
       if (!file) return;
 
-      // Validate file size (max 1MB)
-      if (file.size > 1024 * 1024) {
-        throw new Error('La imagen no debe superar 1MB');
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('La imagen no debe superar 5MB');
       }
 
       // Validate file type
@@ -93,54 +96,107 @@ export default function ProfilePage() {
       if (!user) throw new Error('No user found');
       
       const fileExt = file.name.split('.').pop();
-      const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
+      // Modificamos el formato del nombre para que cumpla con la política RLS
+      // Primero ponemos el ID del usuario, seguido de una barra y luego el resto del nombre
+      // La política espera: user_id/cualquier_cosa.ext
+      const fileName = `${user.id}/${Date.now()}_avatar.${fileExt}`;
       
       // Delete old avatar if exists
       if (profile?.avatar_url) {
-        const oldFileName = profile.avatar_url.split('/').pop().split('?')[0]; // Remover parámetros de query
-        await supabase.storage
-          .from('avatars')
-          .remove([oldFileName]);
+        try {
+          // Extraer nombre del archivo con formato especial
+          // La URL tendrá este formato: https://[base]/storage/v1/object/public/avatars/[user_id]/[timestamp]_avatar.[ext]
+          const urlParts = profile.avatar_url.split('/');
+          // Los últimos dos segmentos son user_id/filename.ext
+          const userId = urlParts[urlParts.length - 2];
+          const filename = urlParts[urlParts.length - 1].split('?')[0]; // Quitar parámetros de query
+          
+          const oldFilePath = `${userId}/${filename}`;
+          console.log('Eliminando avatar anterior:', oldFilePath);
+          
+          const { error: removeError } = await supabase.storage
+            .from('avatars')
+            .remove([oldFilePath]);
+            
+          if (removeError) {
+            console.warn('Error al eliminar avatar anterior:', removeError);
+          } else {
+            console.log('Avatar anterior eliminado correctamente');
+          }
+        } catch (err) {
+          console.warn('Error capturado al eliminar avatar anterior:', err);
+        }
       }
 
-      // Upload new avatar
-      const { error: uploadError, data } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { upsert: true });
+      // Upload new avatar with proper metadata
+      try {
+        const { error: uploadError, data } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, file, { 
+            upsert: true,
+            contentType: file.type
+          });
 
-      if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Error al subir imagen:', uploadError);
+          throw new Error('Error al subir imagen: ' + uploadError.message);
+        }
 
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-      
-      // Añadir timestamp para evitar problemas de caché
-      const timestamp = new Date().getTime();
-      const urlWithTimestamp = `${publicUrl}?t=${timestamp}`;
+        console.log('Avatar subido correctamente:', data);
 
-      // Actualizar perfil con la nueva URL de avatar
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          avatar_url: publicUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+        
+        console.log('Public URL generada:', publicUrl);
+        
+        // Añadir timestamp para evitar problemas de caché
+        const timestamp = new Date().getTime();
+        const urlWithTimestamp = `${publicUrl}?t=${timestamp}`;
+        console.log('URL con timestamp para UI:', urlWithTimestamp);
 
-      if (updateError) throw updateError;
-      
-      // Actualizar la UI
-      setAvatar(file);
-      setAvatarUrl(urlWithTimestamp);
-      setSuccess('Foto de perfil actualizada correctamente');
-      
-      // Refrescar el perfil
-      getProfile();
-      
+        // Actualizar perfil con la nueva URL de avatar
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            avatar_url: publicUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.id);
+
+        if (updateError) {
+          console.error('Error al actualizar perfil:', updateError);
+          throw new Error('Error al actualizar perfil: ' + updateError.message);
+        }
+        
+        console.log('Perfil actualizado con nueva URL de avatar');
+        
+        // Actualizar la UI
+        setAvatar(file);
+        setAvatarUrl(urlWithTimestamp);
+        setSuccess('Foto de perfil actualizada correctamente');
+        
+        // Emitir evento personalizado para notificar a otros componentes
+        const avatarUpdateEvent = new CustomEvent(AVATAR_UPDATED_EVENT, { 
+          detail: { 
+            avatarUrl: urlWithTimestamp,
+            userId: user.id,
+            timestamp: timestamp
+          } 
+        });
+        window.dispatchEvent(avatarUpdateEvent);
+        console.log('Evento de actualización de avatar emitido');
+        
+        // Refrescar el perfil
+        getProfile();
+      } catch (uploadErr) {
+        console.error('Error al subir avatar:', uploadErr);
+        throw uploadErr;
+      }
     } catch (error) {
       console.error('Error updating avatar:', error);
-      setError(error.message);
+      setError(error.message || 'Error al actualizar la foto de perfil');
     } finally {
       setUploadingAvatar(false);
     }
@@ -237,9 +293,17 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto px-5 pb-24">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        Mi Perfil
-      </h1>
+      {/* Título y Subtítulo Modificados */}
+      <div className="text-center pt-6 pb-6 md:pb-8">
+        <h1 className="text-3xl md:text-4xl font-bold mb-2">
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-blue-500">
+            Mi Perfil
+          </span>
+        </h1>
+        <p className="text-base text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+          Gestiona tu información personal y preferencias.
+        </p>
+      </div>
 
       {/* Success Message */}
       {success && (
@@ -296,7 +360,7 @@ export default function ProfilePage() {
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Foto de perfil</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                JPG o PNG. Máximo 1MB.
+                JPG o PNG. Máximo 5MB.
               </p>
             </div>
           </div>

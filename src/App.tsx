@@ -6,7 +6,7 @@ import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import NavigationBar from './components/NavigationBar';
 import MobileNavigation from './components/MobileNavigation';
-import Reader from './components/Reader';
+import ReaderComponent from './components/Reader';
 import LandingPage from './components/LandingPage';
 import HomePage from './components/HomePage';
 import BooksPage from './pages/BooksPage';
@@ -31,7 +31,7 @@ const AppContent = () => {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/books" element={<BooksPage />} />
-          <Route path="/reader" element={<Reader onFullScreenChange={setIsFullScreen} />} />
+          <Route path="/reader" element={<ReaderComponent onFullScreenChange={setIsFullScreen} />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/upload" element={<UploadPage />} />

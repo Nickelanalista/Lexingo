@@ -24,12 +24,29 @@ export const useTranslator = () => {
         throw new Error('OpenAI API key is missing. Please add VITE_OPENAI_API_KEY to your .env file.');
       }
       
-      const translatedText = await OpenAIService.translateWord(word, sourceLanguageCode, targetLanguageCode);
+      const translationResponse = await OpenAIService.translateWord(word, sourceLanguageCode, targetLanguageCode);
+      
+      // Verificar si el resultado es JSON (contiene información de idioma detectado)
+      let translatedText = '';
+      let detectedLanguage = undefined;
+      
+      try {
+        // Intentar parsear como JSON
+        const parsedResponse = JSON.parse(translationResponse);
+        if (parsedResponse && typeof parsedResponse === 'object') {
+          translatedText = parsedResponse.text || '';
+          detectedLanguage = parsedResponse.detectedSourceLanguage;
+        }
+      } catch (e) {
+        // Si no es JSON, es solo texto traducido
+        translatedText = translationResponse;
+      }
       
       const result: TranslationResult = {
         original: word,
         translated: translatedText,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        detectedSourceLanguage: detectedLanguage
       };
       
       return result;

@@ -7,6 +7,7 @@ export interface TranslationResult {
   original: string;
   translated: string;
   timestamp: number;
+  detectedSourceLanguage?: string;
 }
 
 export interface BookPage {
@@ -17,7 +18,7 @@ export interface BookPage {
 export interface Book {
   id?: string;
   title: string;
-  pages: BookPage[];
+  pages: { content: string }[];
   currentPage: number;
   totalPages: number;
   coverUrl?: string;
@@ -26,11 +27,10 @@ export interface Book {
   bookmark_page?: number;
   bookmark_position?: number;
   bookmark_updated_at?: string;
-  processedWithOcr?: boolean;
   ocrInProgress?: boolean;
   ocrProgress?: number;
   ocrTotal?: number;
-  ocrError?: boolean;
+  processedWithOcr?: boolean;
 }
 
 export interface OpenAIResponse {

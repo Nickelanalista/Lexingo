@@ -4,6 +4,7 @@ import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { Link, useLocation } from 'react-router-dom';
+import { AVATAR_UPDATED_EVENT } from '../pages/ProfilePage';
 
 const NavigationBar: React.FC = () => {
   const { book } = useBookContext();
@@ -25,9 +26,30 @@ const NavigationBar: React.FC = () => {
       }
     };
 
+    // Listener para actualización de avatar
+    const handleAvatarUpdate = (event: CustomEvent) => {
+      console.log('Evento de actualización de avatar recibido en NavigationBar', event.detail);
+      if (event.detail && event.detail.avatarUrl) {
+        setAvatarUrl(event.detail.avatarUrl);
+        // Actualizar el perfil después de un breve retraso
+        setTimeout(() => getProfile(), 500);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdate as EventListener);
+    
+    // Configurar un intervalo para refrescar el avatar periódicamente
+    const refreshInterval = setInterval(() => {
+      if (location.pathname !== '/profile') {  // No refrescar en la página de perfil
+        getProfile();
+      }
+    }, 30000); // Cada 30 segundos
+    
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdate as EventListener);
+      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -41,6 +63,8 @@ const NavigationBar: React.FC = () => {
         return;
       }
 
+      console.log('Obteniendo perfil del usuario en NavigationBar');
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -51,6 +75,8 @@ const NavigationBar: React.FC = () => {
         console.error('Error fetching profile:', error);
         return;
       }
+
+      console.log('Datos del perfil obtenidos:', data);
 
       // If no profile exists, create one
       if (!data) {
@@ -78,8 +104,11 @@ const NavigationBar: React.FC = () => {
         // Si hay una URL de avatar, añadir timestamp para evitar caché
         if (data.avatar_url) {
           const timestamp = new Date().getTime();
-          setAvatarUrl(`${data.avatar_url}?t=${timestamp}`);
+          const cachedUrl = `${data.avatar_url}?t=${timestamp}`;
+          console.log('URL de avatar con prevención de caché:', cachedUrl);
+          setAvatarUrl(cachedUrl);
         } else {
+          console.log('No hay URL de avatar disponible');
           setAvatarUrl(null);
         }
       }
@@ -120,7 +149,26 @@ const NavigationBar: React.FC = () => {
   // Function to handle avatar load error
   const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     console.error('Error loading avatar in navbar');
-    setAvatarUrl(null); // Fallback to initials
+    console.log('URL que causó el error:', e.currentTarget.src);
+    
+    // Intentar recargar la imagen con un nuevo timestamp
+    if (profile?.avatar_url) {
+      const newTimestamp = new Date().getTime();
+      const newUrl = `${profile.avatar_url}?t=${newTimestamp}`;
+      console.log('Intentando recargar con nueva URL:', newUrl);
+      setAvatarUrl(newUrl);
+    } else {
+      // Si no hay avatar, mostrar iniciales
+      setAvatarUrl(null);
+    }
+  };
+
+  const getAvatarFallback = () => {
+    return (
+      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
+        {getInitials(profile?.name)}
+      </div>
+    );
   };
 
   return (
@@ -221,9 +269,7 @@ const NavigationBar: React.FC = () => {
                       />
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
-                      {getInitials(profile?.name)}
-                    </div>
+                    getAvatarFallback()
                   )}
                 </button>
                 
@@ -233,7 +279,11 @@ const NavigationBar: React.FC = () => {
                     <Link 
                       to="/profile"
                       className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                      onClick={() => setDropdownOpen(false)}
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        // Forzar actualización del perfil al ir a la página de perfil
+                        setTimeout(() => getProfile(), 500);
+                      }}
                     >
                       <User size={16} className="mr-2" />
                       Mi Perfil
