@@ -61,12 +61,11 @@ exports.handler = async (event, context) => {
     const config = languageConfig[language?.toLowerCase()] || languageConfig['en'];
     
     const requestData = {
-      model: options.model || 'gpt-4o-mini-tts',
+      model: options.model || 'tts-1',
       input: text,
       voice: options.voice || config.voice,
       response_format: options.responseFormat || 'wav',
-      ...(options.speed && { speed: options.speed }),
-      instructions: options.instructions || config.instructions
+      ...(options.speed && { speed: options.speed })
     };
 
     console.log('[TTS] Sending request to OpenAI:', JSON.stringify(requestData, null, 2));

@@ -80,12 +80,28 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    console.log('[DEBUG] Function started');
+    console.log('[DEBUG] Event body:', event.body);
+    console.log('[DEBUG] API Key exists:', !!process.env.OPENAI_API_KEY);
+    console.log('[DEBUG] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
+    
     const { word, sourceLanguageCode, targetLanguageCode = 'es' } = JSON.parse(event.body);
     
     if (!word) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Word is required' })
+      };
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('[ERROR] OPENAI_API_KEY not found in environment');
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ 
+          error: 'OpenAI API key not configured',
+          details: 'OPENAI_API_KEY environment variable is missing'
+        })
       };
     }
 
