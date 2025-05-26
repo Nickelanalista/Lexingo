@@ -11,6 +11,17 @@ const getLanguageName = (code) => {
   return languages[code.toLowerCase()] || code.toUpperCase();
 };
 
+// Helper function to get language name in English for AI prompt
+const getLanguageNameInEnglish = (code) => {
+  const languages = {
+    'en': 'English', 'es': 'Spanish', 'it': 'Italian', 'fr': 'French',
+    'ja': 'Japanese', 'de': 'German', 'pt': 'Portuguese', 'ru': 'Russian',
+    'zh': 'Chinese', 'ar': 'Arabic', 'hi': 'Hindi', 'ko': 'Korean',
+    'auto': 'auto-detect'
+  };
+  return languages[code.toLowerCase()] || code.toUpperCase();
+};
+
 exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -41,10 +52,11 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Force translation to Spanish
-    console.log(`[TRADUCCIÓN PÁRRAFO] Forzando traducción al español desde: ${sourceLanguageCode}`);
+    // Translate to the specified target language
+    console.log(`[TRADUCCIÓN PÁRRAFO] Traduciendo de ${sourceLanguageCode} a ${targetLanguageCode}`);
     
-    const sourceLanguageName = getLanguageName(sourceLanguageCode);
+    const sourceLanguageName = getLanguageNameInEnglish(sourceLanguageCode);
+    const targetLanguageName = getLanguageNameInEnglish(targetLanguageCode);
     
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -53,15 +65,15 @@ exports.handler = async (event, context) => {
         messages: [
           {
             role: 'system',
-            content: `Eres un traductor experto que SIEMPRE traduce al español. Traduce el siguiente texto del ${sourceLanguageName} al español de forma precisa y natural, manteniendo el formato y el significado original lo mejor posible. Si hay saltos de línea o párrafos, consérvalos.`
+            content: `You are an expert translator. Translate the following text from ${sourceLanguageName} to ${targetLanguageName} accurately and naturally, preserving the original format and meaning as much as possible. If there are line breaks or paragraphs, preserve them. Respond ONLY with the translation, no explanations or additional text.`
           },
           {
             role: 'user',
-            content: `Traduce el siguiente texto del ${sourceLanguageName} al español:\n\n"${text}"`
+            content: `Translate this text from ${sourceLanguageName} to ${targetLanguageName}:\n\n"${text}"`
           }
         ],
-        temperature: 0.5,
-        max_tokens: 500
+        temperature: 0.3,
+        max_tokens: 800
       },
       {
         headers: {

@@ -61,10 +61,11 @@ exports.handler = async (event, context) => {
     const config = languageConfig[language?.toLowerCase()] || languageConfig['en'];
     
     const requestData = {
-      model: options.model || 'tts-1',
+      model: options.model || 'gpt-4o-mini-tts', // Actualizado al nuevo modelo
       input: text,
       voice: options.voice || config.voice,
       response_format: options.responseFormat || 'wav',
+      instructions: config.instructions, // Agregar instrucciones para mejor pronunciación
       ...(options.speed && { speed: options.speed })
     };
 
@@ -84,37 +85,11 @@ exports.handler = async (event, context) => {
 
     console.log('[TTS] Response received, size:', response.data.byteLength);
 
-    // Convert ArrayBuffer to base64
+    // Convert ArrayBuffer to base64 - método simplificado
     const arrayBuffer = response.data;
-    const uint8Array = new Uint8Array(arrayBuffer);
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
     
-    let base64 = '';
-    
-    try {
-      // Safe method to convert to base64
-      const chunks = [];
-      const chunkSize = 8192;
-      
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.slice(i, i + chunkSize);
-        const chunkStr = Array.from(chunk).map(byte => String.fromCharCode(byte)).join('');
-        chunks.push(Buffer.from(chunkStr, 'binary').toString('base64'));
-      }
-      
-      base64 = chunks.join('');
-      console.log('[TTS] Base64 conversion completed, size:', base64.length);
-      
-    } catch (error) {
-      console.log('[TTS] Error in chunked conversion, trying alternative method...');
-      // Alternative method
-      try {
-        base64 = Buffer.from(arrayBuffer).toString('base64');
-        console.log('[TTS] Alternative conversion successful, size:', base64.length);
-      } catch (altError) {
-        console.error('[TTS] Error in alternative conversion:', altError);
-        throw new Error('Could not convert audio to base64');
-      }
-    }
+    console.log('[TTS] Base64 conversion completed, size:', base64.length);
     
     if (!base64 || base64.length === 0) {
       throw new Error('Base64 conversion resulted in empty string');
