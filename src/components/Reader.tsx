@@ -63,6 +63,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const prevBookPageRef = useRef<number | null>(null);
   const lastDisplayedPageAndLangRef = useRef({ page: 0, lang: '' });
   
+  // NUEVO: Estado para rastrear si ya se detectó el idioma del libro para evitar re-detecciones
+  const [bookLanguageDetected, setBookLanguageDetected] = useState(false);
+  
   // Cargar el último libro leído si no hay un libro seleccionado
   useEffect(() => {
     const fetchLastReadBook = async () => {
@@ -108,6 +111,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           console.log('[CARGA] Llamando a loadBookAndSkipEmptyPages para omitir páginas vacías');
           loadBookAndSkipEmptyPages(bookData);
           console.log('[CARGA] Libro reciente cargado automáticamente:', data.title);
+          
+          // Resetear el flag de detección de idioma para el nuevo libro
+          setBookLanguageDetected(false);
         } catch (error) {
           console.error('[CARGA] Error al cargar el último libro leído:', error);
         }
@@ -117,113 +123,83 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     fetchLastReadBook();
   }, [book, loadBookAndSkipEmptyPages, setBook]);
   
-  // NUEVO: Efecto para detectar y traducir inmediatamente al cargar el libro
+  // MEJORADO: Efecto único para detectar el idioma del libro solo una vez al cargarse
   useEffect(() => {
-    // Este efecto se ejecuta cuando el libro termina de cargarse o cuando isLoading cambia de true a false
-    if (book && !isLoading) {
-      console.log('[DETECCIÓN-INICIAL] Libro cargado, iniciando detección inmediata de idioma');
+    if (book && !isLoading && !bookLanguageDetected) {
+      console.log('[DETECCIÓN-INICIAL] Iniciando detección única de idioma del libro');
       
-      const currentPageIndex = book.currentPage - 1;
-      if (currentPageIndex < 0 || currentPageIndex >= book.pages.length) {
-        console.log('[DETECCIÓN-INICIAL] Índice de página fuera de rango');
-        return;
-      }
+      // Buscar una página con contenido válido para la detección
+      let pageWithContent = null;
+      let pageContentForDetection = '';
       
-      const pageContent = book.pages[currentPageIndex]?.content || '';
-      
-      // Verificar si el contenido es un mensaje de error o un placeholder
-      if (!pageContent || 
-          pageContent.startsWith('[Contenido de la página') || 
-          pageContent.startsWith('[Procesando OCR para página') ||
-          pageContent.startsWith('[Página') ||
-          pageContent.startsWith('[Error')) {
-        console.log('[DETECCIÓN-INICIAL] La página contiene contenido placeholder o mensaje de error, omitiendo detección');
-        return;
-      }
-      
-      // Verificar si el contenido ya está en inglés antes de asumir que está en español
-      const isEnglishContent = 
-        (pageContent.includes('the ') || pageContent.includes('The ')) && 
-        (pageContent.includes(' of ') || pageContent.includes(' for ')) && 
-        (pageContent.includes(' and ') || pageContent.includes(' or ')) &&
-        !pageContent.includes('á') && !pageContent.includes('é') && 
-        !pageContent.includes('í') && !pageContent.includes('ó') && 
-        !pageContent.includes('ú') && !pageContent.includes('ñ');
-      
-      if (isEnglishContent) {
-        console.log('[DETECCIÓN-INICIAL] Contenido detectado en inglés, manteniendo idioma original');
-        setSourceBookLanguage('en');
-        setCurrentBookLanguage('en');
-        return;
-      }
-      
-      // Detectar si el contenido está en español con alta confianza
-      const isSpanishContent = 
-        pageContent.includes('á') || pageContent.includes('é') || 
-        pageContent.includes('í') || pageContent.includes('ó') || 
-        pageContent.includes('ú') || pageContent.includes('ñ') ||
-        pageContent.includes('¿') || pageContent.includes('¡') ||
-        (pageContent.includes(' el ') && pageContent.includes(' la ') && 
-         pageContent.includes(' en ') && pageContent.includes(' con '));
-      
-      if (isSpanishContent) {
-        console.log('[DETECCIÓN-INICIAL] Contenido detectado en español, forzando traducción a inglés');
-        // Establecer idioma fuente como español
-        setSourceBookLanguage('es');
-        // Establecer idioma de destino como inglés
-        setCurrentBookLanguage('en');
-        
-        // Forzar la traducción inmediata de la página actual
-        if (!currentPageContentForDisplay) {
-          console.log('[DETECCIÓN-INICIAL] Iniciando traducción inmediata de la primera página');
-          setIsCurrentPageTranslating(true);
-          
-          translatePageText(pageContent, 'en', 'es')
-            .then(translated => {
-              if (!book) return;
-              console.log('[DETECCIÓN-INICIAL] Traducción completada exitosamente');
-              setCurrentPageContentForDisplay(translated || pageContent);
-              lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: 'en' };
-              
-              // Pre-traducir también la siguiente página para tenerla lista
-              if (book.currentPage < book.totalPages) {
-                const nextPageContent = book.pages[book.currentPage]?.content;
-                if (nextPageContent && 
-                    !nextPageContent.startsWith('[Contenido de la página') && 
-                    !nextPageContent.startsWith('[Procesando OCR para página') &&
-                    !nextPageContent.startsWith('[Página') &&
-                    !nextPageContent.startsWith('[Error')) {
-                  console.log('[DETECCIÓN-INICIAL] Pre-traduciendo siguiente página');
-                  setIsProactivelyTranslatingNextPage(true);
-                  
-                  translatePageText(nextPageContent, 'en', 'es')
-                    .then(nextTranslated => {
-                      if (!book) return;
-                      setProactivelyTranslatedNextPageContent(nextTranslated);
-                      setProactivelyTranslatedForPageNumber(book.currentPage + 1);
-                    })
-                    .catch(error => {
-                      console.error('[DETECCIÓN-INICIAL] Error pre-traduciendo página siguiente:', error);
-                    })
-                    .finally(() => {
-                      setIsProactivelyTranslatingNextPage(false);
-                    });
-                }
-              }
-            })
-            .catch(error => {
-              console.error('[DETECCIÓN-INICIAL] Error traduciendo primera página:', error);
-              setCurrentPageContentForDisplay(pageContent); // Mostrar contenido original como fallback
-            })
-            .finally(() => {
-              setIsCurrentPageTranslating(false);
-            });
+      for (let i = 0; i < Math.min(book.pages.length, 5); i++) { // Revisar máximo 5 páginas
+        const pageContent = book.pages[i]?.content || '';
+        if (pageContent && 
+            !pageContent.startsWith('[Contenido de la página') && 
+            !pageContent.startsWith('[Procesando OCR para página') &&
+            !pageContent.startsWith('[Página') &&
+            !pageContent.startsWith('[Error') &&
+            pageContent.trim().length > 50) { // Contenido mínimo para detección confiable
+          pageWithContent = i + 1;
+          pageContentForDetection = pageContent;
+          break;
         }
-      } else {
-        console.log('[DETECCIÓN-INICIAL] El contenido no parece estar en español, manteniendo idioma actual');
+      }
+      
+      if (!pageWithContent) {
+        console.log('[DETECCIÓN-INICIAL] No se encontró contenido válido para detección, asumiendo inglés');
+        setSourceBookLanguage('en');
+        setBookLanguageDetected(true);
+        return;
+      }
+      
+      console.log(`[DETECCIÓN-INICIAL] Analizando contenido de página ${pageWithContent} para detectar idioma`);
+      
+      // Detectar idioma basado en características del texto
+      const detectBookLanguage = (content: string): string => {
+        // Verificar indicadores fuertes de español
+        const spanishIndicators = ['á', 'é', 'í', 'ó', 'ú', 'ñ', '¿', '¡'];
+        const hasSpanishChars = spanishIndicators.some(char => content.includes(char));
+        
+        // Palabras comunes en español
+        const spanishWords = [' el ', ' la ', ' los ', ' las ', ' un ', ' una ', ' de ', ' en ', ' con ', ' por ', ' para ', ' que ', ' y ', ' o '];
+        const spanishWordCount = spanishWords.filter(word => content.toLowerCase().includes(word)).length;
+        
+        // Verificar indicadores de inglés
+        const englishWords = [' the ', ' of ', ' and ', ' to ', ' a ', ' in ', ' for ', ' is ', ' on ', ' that ', ' by ', ' this ', ' with ', ' i ', ' you ', ' it ', ' not ', ' or ', ' be ', ' are '];
+        const englishWordCount = englishWords.filter(word => content.toLowerCase().includes(word)).length;
+        
+        // Terminaciones típicas
+        const spanishEndings = content.match(/\w+(ción|dad|mente|aba|aban|ado|ido|amos|emos|imos)\b/gi) || [];
+        const englishEndings = content.match(/\w+(ing|ly|ed|tion|ness)\b/gi) || [];
+        
+        console.log(`[DETECCIÓN-INICIAL] Puntuación - Español: ${spanishWordCount + spanishEndings.length + (hasSpanishChars ? 10 : 0)}, Inglés: ${englishWordCount + englishEndings.length}`);
+        
+        // Decidir el idioma
+        const spanishScore = spanishWordCount + spanishEndings.length + (hasSpanishChars ? 10 : 0);
+        const englishScore = englishWordCount + englishEndings.length;
+        
+        if (spanishScore > englishScore + 5) {
+          return 'es';
+        } else {
+          return 'en';
+        }
+      };
+      
+      const detectedLanguage = detectBookLanguage(pageContentForDetection);
+      console.log(`[DETECCIÓN-INICIAL] Idioma detectado del libro: ${detectedLanguage}`);
+      
+      setSourceBookLanguage(detectedLanguage);
+      setBookLanguageDetected(true);
+      
+      // Solo si detectamos español y el usuario no ha seleccionado un idioma específico, 
+      // establecemos inglés como idioma de visualización por defecto
+      if (detectedLanguage === 'es' && currentBookLanguage === 'en') {
+        console.log('[DETECCIÓN-INICIAL] Libro en español detectado, manteniendo inglés como idioma de visualización por defecto');
+        // currentBookLanguage ya está en 'en' por defecto, no necesitamos cambiarlo
       }
     }
-  }, [book, isLoading, translatePageText]);
+  }, [book, isLoading, bookLanguageDetected, currentBookLanguage]);
   
   // Preservar la página actual cuando se actualiza el libro por OCR
   const prevBookRef = useRef<Book | null>(null);
@@ -386,9 +362,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   };
 
-  // Efecto 1: Manejar la página actual (N)
+  // Efecto 1: Manejar la página actual (N) - MEJORADO para evitar traducciones innecesarias
   useEffect(() => {
-    console.log('[PAGE_N_EFFECT] Triggered. Current Page:', book?.currentPage, 'Lang:', currentBookLanguage, 'DisplayContent empty?', !currentPageContentForDisplay, 'ProactivePage:', proactivelyTranslatedForPageNumber, 'isTranslating:', isCurrentPageTranslating);
+    console.log('[PAGE_N_EFFECT] Triggered. Current Page:', book?.currentPage, 'Lang:', currentBookLanguage, 'SourceLang:', sourceBookLanguage, 'DisplayContent empty?', !currentPageContentForDisplay, 'ProactivePage:', proactivelyTranslatedForPageNumber, 'isTranslating:', isCurrentPageTranslating);
 
     if (!book || !book.pages || book.pages.length === 0 || !book.currentPage) {
       setCurrentPageContentForDisplay(null);
@@ -396,17 +372,14 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       return;
     }
 
-    // GUARDIA: Si el contenido ya se mostró para esta página/idioma y no estamos en una carga activa para ella,
-    // y esta ejecución es probablemente por un cambio en dependencias externas (como proactively... por cleanup),
-    // no hacer nada para evitar retraducir o resetear el loader.
+    // GUARDIA: Si el contenido ya se mostró para esta página/idioma
     if (
       lastDisplayedPageAndLangRef.current.page === book.currentPage &&
       lastDisplayedPageAndLangRef.current.lang === currentBookLanguage &&
-      currentPageContentForDisplay !== null && // Ya hay contenido
-      !isCurrentPageTranslating // Y no estamos activamente cargando ESTA página
+      currentPageContentForDisplay !== null &&
+      !isCurrentPageTranslating
     ) {
-      console.log(`[PAGE_N_EFFECT] Content for page ${book.currentPage} (${currentBookLanguage}) already displayed. Proactive: ${proactivelyTranslatedForPageNumber}. Skipping re-processing.`);
-      // Asegurarse de que el loader no se active si esta guarda actúa.
+      console.log(`[PAGE_N_EFFECT] Content for page ${book.currentPage} (${currentBookLanguage}) already displayed. Skipping re-processing.`);
       if (isCurrentPageTranslating) setIsCurrentPageTranslating(false);
       return;
     }
@@ -427,198 +400,103 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       setCurrentPageContentForDisplay(proactivelyTranslatedNextPageContent);
       setIsCurrentPageTranslating(false);
       lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
-      // NO LIMPIAR proactivelyTranslatedNextPageContent y proactivelyTranslatedForPageNumber AQUÍ
-      return; // Importante para no proceder a traducir de nuevo si se usó caché
-    }
-
-    // NUEVA LÓGICA: Detectar automáticamente el idioma del texto original si no está definido
-    if (!sourceBookLanguage || sourceBookLanguage === '') {
-      // Intentamos detectar el idioma del contenido original
-      const detectLanguage = async () => {
-        console.log('[PAGE_N_EFFECT] Detectando idioma del contenido original...');
-        try {
-          // Usamos el primer párrafo no vacío para la detección
-          const firstNonEmptyParagraph = originalContent
-            .split('\n')
-            .find(p => p.trim().length > 30) || originalContent;
-            
-          const sample = firstNonEmptyParagraph.substring(0, 200); // Tomamos una muestra representativa
-          
-          // Usar primero nuestra detección local para mayor eficiencia
-          const locallyDetectedLang = OpenAIService.detectLanguageLocally(sample);
-          console.log(`[PAGE_N_EFFECT] Idioma detectado localmente: ${locallyDetectedLang}`);
-          
-          // Si la detección local está muy segura de que es español, usamos esa
-          const isConfidentSpanish = locallyDetectedLang === 'es' && (
-            sample.includes('á') || sample.includes('é') || sample.includes('í') || 
-            sample.includes('ó') || sample.includes('ú') || sample.includes('ñ') ||
-            sample.includes('¿') || sample.includes('¡')
-          );
-          
-          if (isConfidentSpanish) {
-            console.log('[PAGE_N_EFFECT] Detección local confiada: Español');
-            setSourceBookLanguage('es');
-            return 'es';
-          }
-          
-          // Si no estamos totalmente seguros, consultamos la API
-          const detectedLang = await translateWord(sample, 'auto', 'en')
-            .then(result => {
-              // Extraer el idioma detectado del resultado o usar 'en' como fallback
-              const detected = result && typeof result === 'object' && 'detectedSourceLanguage' in result 
-                ? result.detectedSourceLanguage as string
-                : 'en';
-              
-              // Si detectamos texto en español, establecer explícitamente 'es'
-              if (detected === 'es' || 
-                  // Palabras comunes en español para verificación adicional
-                  sample.includes('del') || 
-                  sample.includes(' y ') || 
-                  sample.includes(' a ') || 
-                  sample.includes(' el ') || 
-                  sample.includes(' la ') || 
-                  sample.includes(' los ') || 
-                  sample.includes(' las ') || 
-                  sample.includes(' que ') || 
-                  sample.includes(' de ') || 
-                  sample.includes(' en ') || 
-                  sample.includes(' con ') || 
-                  sample.includes(' por ') || 
-                  sample.includes(' para ')) {
-                console.log('[PAGE_N_EFFECT] Texto detectado como español por palabras comunes');
-                return 'es';
-              }
-              
-              return detected;
-            })
-            .catch(() => {
-              // Si falla la API, confiar en nuestra detección local
-              console.log('[PAGE_N_EFFECT] Error en API, usando detección local');
-              return locallyDetectedLang;
-            });
-            
-          console.log(`[PAGE_N_EFFECT] Idioma detectado final: ${detectedLang}`);
-          setSourceBookLanguage(detectedLang);
-          return detectedLang;
-        } catch (error) {
-          console.error('[PAGE_N_EFFECT] Error al detectar idioma:', error);
-          return 'en'; // Valor predeterminado si falla
-        }
-      };
-      
-      setIsCurrentPageTranslating(true);
-      detectLanguage().then(detectedLang => {
-        // Si el idioma seleccionado es el mismo que el detectado, no hacemos traducción
-        if (currentBookLanguage === detectedLang) {
-          console.log('[PAGE_N_EFFECT] El idioma seleccionado coincide con el detectado, mostrando contenido original');
-          setCurrentPageContentForDisplay(originalContent);
-          setIsCurrentPageTranslating(false);
-          lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
-        } else {
-          // Si son diferentes, procedemos con la traducción
-          handleTranslation(originalContent, detectedLang as string);
-        }
-      });
       return;
     }
 
-    // LÓGICA MEJORADA: Si el idioma actual coincide con el idioma fuente, no traducir
+    // Si no hemos detectado el idioma aún, mostrar contenido original mientras tanto
+    if (!bookLanguageDetected) {
+      console.log('[PAGE_N_EFFECT] Language not detected yet, showing original content');
+      setCurrentPageContentForDisplay(originalContent);
+      setIsCurrentPageTranslating(false);
+      lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
+      return;
+    }
+
+    // LÓGICA PRINCIPAL: Si el idioma seleccionado coincide con el idioma del libro, mostrar original
     if (currentBookLanguage === sourceBookLanguage) {
-      console.log('[PAGE_N_EFFECT] Idioma seleccionado coincide con el del documento, mostrando contenido original');
+      console.log(`[PAGE_N_EFFECT] Idioma seleccionado (${currentBookLanguage}) coincide con el del libro (${sourceBookLanguage}), mostrando contenido original`);
       setCurrentPageContentForDisplay(originalContent);
       setIsCurrentPageTranslating(false);
       lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
     } else {
-      // Necesita traducción para la página N
-      handleTranslation(originalContent, sourceBookLanguage);
-    }
-    
-    // Función auxiliar para manejar la traducción
-    function handleTranslation(content: string, sourceLang: string) {
-      if (!book) return;
+      // Necesita traducción
+      console.log(`[PAGE_N_EFFECT] Traduciendo de ${sourceBookLanguage} a ${currentBookLanguage}. Original: ${originalContent.substring(0,50)}...`);
+      setIsCurrentPageTranslating(true);
+      setCurrentPageContentForDisplay(null);
       
-      console.log(`[PAGE_N_EFFECT] Traduciendo de ${sourceLang} a ${currentBookLanguage}. Original: ${content.substring(0,50)}...`);
-      setIsCurrentPageTranslating(true); // Indicar que estamos iniciando una carga/traducción
-      setCurrentPageContentForDisplay(null); // Mostrar loader mientras se traduce N
-      
-      translatePageText(content, currentBookLanguage, sourceLang)
+      translatePageText(originalContent, currentBookLanguage, sourceBookLanguage)
         .then(translated => {
           if (!book) return;
-          console.log(`[PAGE_N_EFFECT] Traducción para página ${book.currentPage} completada. Traducido: ${translated ? translated.substring(0,50) : 'null'}...`);
-          setCurrentPageContentForDisplay(translated || content); // Fallback a original si la traducción falla
+          console.log(`[PAGE_N_EFFECT] Traducción para página ${book.currentPage} completada.`);
+          setCurrentPageContentForDisplay(translated || originalContent);
           lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
         })
         .catch(error => {
           if (!book) return;
           console.error(`[PAGE_N_EFFECT] Error traduciendo página ${book.currentPage}:`, error);
-          setCurrentPageContentForDisplay(content); // Fallback
-          lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage }; // Registrar incluso con fallback
+          setCurrentPageContentForDisplay(originalContent);
+          lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
         })
         .finally(() => {
           setIsCurrentPageTranslating(false);
         });
     }
-  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.pages, proactivelyTranslatedNextPageContent, proactivelyTranslatedForPageNumber, translatePageText, translateWord, currentPageContentForDisplay, isCurrentPageTranslating]);
+  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.pages, proactivelyTranslatedNextPageContent, proactivelyTranslatedForPageNumber, translatePageText, currentPageContentForDisplay, isCurrentPageTranslating, bookLanguageDetected]);
 
-  // Efecto 2: Traducir proactivamente la página N+1 DESPUÉS de que N esté lista
+  // Efecto 2: Traducir proactivamente la página N+1 - MEJORADO
   useEffect(() => {
     if (!book || !book.pages || book.pages.length === 0 || isCurrentPageTranslating || isProactivelyTranslatingNextPage) {
-      // No hacer nada si N aún se está cargando/traduciendo, o si N+1 ya está en proceso
       return;
     }
 
-    const currentPageNum = book.currentPage; // Esta es N
-    const nextPageNum = currentPageNum + 1;    // Esta es N+1
+    const currentPageNum = book.currentPage;
+    const nextPageNum = currentPageNum + 1;
 
     if (nextPageNum > book.totalPages) {
       console.log('[PAGE_N+1_EFFECT] No next page to translate proactively.');
-      setProactivelyTranslatedNextPageContent(null); // Limpiar si no hay más páginas
+      setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
       return;
     }
 
-    // Si ya tenemos una traducción para N+1 (y es la correcta), no hacer nada.
-    // Esto puede suceder si el usuario va y vuelve rápidamente.
     if (proactivelyTranslatedForPageNumber === nextPageNum && proactivelyTranslatedNextPageContent) {
       console.log(`[PAGE_N+1_EFFECT] Page ${nextPageNum} already proactively translated.`);
       return;
     }
 
-    // Si el idioma de visualización es el original, no necesitamos pre-traducir.
-    if (currentBookLanguage === sourceBookLanguage) {
-      console.log('[PAGE_N+1_EFFECT] Source language, no proactive translation needed.');
+    // Si el idioma de visualización es el original o no hemos detectado aún, no necesitamos pre-traducir
+    if (!bookLanguageDetected || currentBookLanguage === sourceBookLanguage) {
+      console.log('[PAGE_N+1_EFFECT] Source language matches display language or not detected yet, no proactive translation needed.');
       setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
       return;
     }
     
-    const nextPageOriginalContent = book.pages[nextPageNum - 1]?.content; // nextPageNum es 1-indexed
+    const nextPageOriginalContent = book.pages[nextPageNum - 1]?.content;
 
     if (!nextPageOriginalContent || nextPageOriginalContent.startsWith('[Contenido de la página') || nextPageOriginalContent.startsWith('[Procesando OCR para página')) {
       console.log(`[PAGE_N+1_EFFECT] Next page ${nextPageNum} has placeholder content, not translating proactively.`);
       return;
     }
 
-    console.log(`[PAGE_N+1_EFFECT] Starting proactive translation for page ${nextPageNum} (from current ${currentPageNum}) to ${currentBookLanguage}.`);
+    console.log(`[PAGE_N+1_EFFECT] Starting proactive translation for page ${nextPageNum} from ${sourceBookLanguage} to ${currentBookLanguage}.`);
     setIsProactivelyTranslatingNextPage(true);
     translatePageText(nextPageOriginalContent, currentBookLanguage, sourceBookLanguage)
       .then(translated => {
-        console.log(`[PAGE_N+1_EFFECT] Proactive translation for page ${nextPageNum} done. Content: ${translated ? 'OK' : 'FAIL'}`);
+        console.log(`[PAGE_N+1_EFFECT] Proactive translation for page ${nextPageNum} done.`);
         setProactivelyTranslatedNextPageContent(translated);
-        setProactivelyTranslatedForPageNumber(nextPageNum); // Guardar para qué página N+1 es esta traducción
+        setProactivelyTranslatedForPageNumber(nextPageNum);
       })
       .catch(error => {
         console.error(`[PAGE_N+1_EFFECT] Error proactively translating page ${nextPageNum}:`, error);
-        setProactivelyTranslatedNextPageContent(null); // Limpiar en caso de error
+        setProactivelyTranslatedNextPageContent(null);
         setProactivelyTranslatedForPageNumber(null);
       })
       .finally(() => {
         setIsProactivelyTranslatingNextPage(false);
       });
 
-  // Dependencias: cuando la página N cambia, o el contenido de N (currentPageContentForDisplay) se establece,
-  // o el idioma del libro cambia. También book.pages para el contenido de N+1.
-  }, [currentPageContentForDisplay, book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.totalPages, book?.pages, isCurrentPageTranslating, isProactivelyTranslatingNextPage, translatePageText]);
+  }, [currentPageContentForDisplay, book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.totalPages, book?.pages, isCurrentPageTranslating, isProactivelyTranslatingNextPage, translatePageText, bookLanguageDetected]);
   
   // Actualizar allWords cuando currentPageContentForDisplay cambie
   useEffect(() => {
@@ -640,12 +518,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
   // Limpiar traducciones proactivas si el idioma vuelve al original o el libro cambia
   useEffect(() => {
-    if (currentBookLanguage === sourceBookLanguage || !book) {
+    if ((bookLanguageDetected && currentBookLanguage === sourceBookLanguage) || !book) {
       console.log('[CLEANUP_EFFECT] Clearing proactive translations (language changed to source or no book).');
       setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
     }
-  }, [currentBookLanguage, sourceBookLanguage, book]);
+  }, [currentBookLanguage, sourceBookLanguage, book, bookLanguageDetected]);
 
   // Nuevo efecto para limpiar la caché proactiva de N+1 si ya no es la "siguiente" página relevante
   useEffect(() => {
@@ -1176,6 +1054,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const languageButtonRef = useRef<HTMLButtonElement>(null);
 
   const languageOptions = useMemo(() => [
+    { code: "es", name: getLanguageName("es") }, // Agregado español al inicio
     { code: "en", name: getLanguageName("en") },
     { code: "it", name: getLanguageName("it") },
     { code: "fr", name: getLanguageName("fr") },
@@ -1219,41 +1098,22 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   // Nuevo efecto para cargar el idioma preferido del usuario, usando tanto localStorage como Supabase
   useEffect(() => {
     const loadPreferredLanguage = async () => {
-      // OMITIMOS CARGAR DESDE LOCALSTORAGE inicialmente para asegurar visualización en inglés
-      /*
-      const savedLanguage = localStorage.getItem('preferred_language');
-      if (savedLanguage) {
-        console.log('Idioma cargado desde localStorage:', savedLanguage);
-        setCurrentBookLanguage(savedLanguage);
-      }
-      */
-      
       try {
-        // Luego verificamos si hay una preferencia guardada en Supabase
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          // Consultar el perfil del usuario para buscar preferencia de idioma
           const { data, error } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', user.id)
             .single();
             
-          if (!error && data) {
-            // Si el perfil tiene la propiedad, usarla SOLO si no es para visualizar español
-            if (data.preferred_language && data.preferred_language !== 'es') {
-              console.log('Idioma cargado desde Supabase:', data.preferred_language);
-              setCurrentBookLanguage(data.preferred_language);
-            } else {
-              // Si es español, forzamos a inglés
-              setCurrentBookLanguage('en');
-            }
+          if (!error && data && data.preferred_language) {
+            console.log('Idioma cargado desde Supabase:', data.preferred_language);
+            setCurrentBookLanguage(data.preferred_language);
           }
         }
       } catch (error) {
         console.error('Error al cargar la preferencia de idioma:', error);
-        // En caso de error, usar inglés como predeterminado
-        setCurrentBookLanguage('en');
       }
     };
     
@@ -1336,85 +1196,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   }, [book, isLoading, goToPage]);
 
-  // Modificar el efecto que detecta español
-  useEffect(() => {
-    if (book && book.pages && book.pages.length > 0) {
-      // Tomar una muestra representativa del libro para análisis de idioma
-      const pageIndex = book.currentPage - 1;
-      const pageContent = book.pages[pageIndex]?.content || '';
-      
-      // Ignorar mensajes de error o placeholders
-      if (!pageContent || 
-          pageContent.startsWith('[Contenido de la página') || 
-          pageContent.startsWith('[Procesando OCR para página') ||
-          pageContent.startsWith('[Página') ||
-          pageContent.startsWith('[Error')) {
-        console.log('[DETECCIÓN-ESPAÑOL] Ignorando contenido de marcador de posición o error');
-        return;
-      }
-      
-      // Verificar si el contenido ya está en inglés
-      const isEnglishContent = 
-        (pageContent.includes('the ') || pageContent.includes('The ')) && 
-        (pageContent.includes(' of ') || pageContent.includes(' for ')) && 
-        (pageContent.includes(' and ') || pageContent.includes(' or ')) &&
-        !pageContent.includes('á') && !pageContent.includes('é') && 
-        !pageContent.includes('í') && !pageContent.includes('ó') && 
-        !pageContent.includes('ú') && !pageContent.includes('ñ');
-      
-      if (isEnglishContent) {
-        console.log('[DETECCIÓN-ESPAÑOL] Contenido detectado en inglés, manteniendo idioma original');
-        setSourceBookLanguage('en');
-        return;
-      }
-      
-      // Si el contenido tiene caracteres españoles, establecer idioma fuente como español
-      const isSpanishContent = 
-        pageContent.includes('á') || pageContent.includes('é') || 
-        pageContent.includes('í') || pageContent.includes('ó') || 
-        pageContent.includes('ú') || pageContent.includes('ñ') ||
-        pageContent.includes('¿') || pageContent.includes('¡') ||
-        (pageContent.includes(' el ') && pageContent.includes(' la ') && 
-         pageContent.includes(' en ') && pageContent.includes(' con '));
-      
-      if (isSpanishContent) {
-        console.log('[DETECCIÓN-ESPAÑOL] Contenido detectado en español, configurando para traducción ES→EN');
-        setSourceBookLanguage('es');
-        // Forzar idioma de visualización a inglés independientemente de localStorage
-        setCurrentBookLanguage('en');
-        
-        // NUEVO: Forzar la traducción inmediata para la primera página si aún no hay contenido traducido
-        if (!currentPageContentForDisplay) {
-          // Asegurarnos de que la página actual tiene contenido válido
-          if (pageContent && 
-              !pageContent.startsWith('[Contenido de la página') && 
-              !pageContent.startsWith('[Procesando OCR para página') &&
-              !pageContent.startsWith('[Página') &&
-              !pageContent.startsWith('[Error')) {
-            console.log('[DETECCIÓN-ESPAÑOL] Forzando traducción inmediata de primera página');
-            // Usar la función auxiliar handleTranslation que está definida en el efecto principal
-            // Para asegurar que esto funcione, definimos la función fuera del efecto principal
-            setIsCurrentPageTranslating(true);
-            translatePageText(pageContent, 'en', 'es')
-              .then(translated => {
-                if (!book) return;
-                console.log(`[TRADUCCIÓN-INMEDIATA] Traducción para página ${book.currentPage} completada.`);
-                setCurrentPageContentForDisplay(translated || pageContent);
-                lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: 'en' };
-              })
-              .catch(error => {
-                console.error('[TRADUCCIÓN-INMEDIATA] Error traduciendo:', error);
-                setCurrentPageContentForDisplay(pageContent); // Fallback al original
-              })
-              .finally(() => {
-                setIsCurrentPageTranslating(false);
-              });
-          }
-        }
-      }
-    }
-  }, [book, book?.currentPage, book?.pages, currentPageContentForDisplay, translatePageText]);
-
   if (!book) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
@@ -1453,43 +1234,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       {/* Header principal - Solo visible cuando NO estamos en modo pantalla completa */}
       {!isFullScreen && <div className="h-16"></div>}
       
-      {/* Mensaje de ayuda */}
-      {showHelp && (
-        <div className="fixed bottom-24 right-8 left-8 sm:left-auto sm:w-80 p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg shadow-lg border border-blue-200 dark:border-blue-800 z-50 animate-fade-in">
-          <button
-            onClick={() => setShowHelp(false)}
-            className="absolute top-2 right-2 text-blue-400 hover:text-blue-500"
-          >
-            <X size={16} />
-          </button>
-          <div className="flex items-start">
-            <HelpCircle className="text-blue-500 w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">Modo Lectura</h4>
-              <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
-                Toca cualquier palabra para ver su traducción. Para traducir un párrafo, pulsa el botón de traducción, selecciona la palabra inicial y final.
-              </p>
-              <div className="text-xs text-blue-600 dark:text-blue-400 flex justify-between items-center">
-                <span>← → para navegar</span>
-                <span>ESC para salir</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mensaje de páginas omitidas */}
-      {showSkippedMessage && pagesSkipped > 0 && (
-        <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 animate-fadeIn">
-          <div className="bg-green-600 text-white py-2 px-5 rounded-full shadow-lg flex items-center space-x-2 text-center max-w-[280px]">
-            <div className="flex-shrink-0 w-4 h-4 rounded-full bg-white"></div>
-            <span className="text-sm">Se {pagesSkipped === 1 ? 'omitió' : 'omitieron'} {pagesSkipped} {pagesSkipped === 1 ? 'página vacía' : 'páginas vacías'} al inicio</span>
-          </div>
-        </div>
+      {/* División/separación entre header principal y barra del Reader */}
+      {!isFullScreen && (
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent opacity-50"></div>
       )}
       
       {/* Barra de navegación de lectura */}
-      <div className={`fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-[999] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
+      <div className={`reader-navigation-bar fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-[50] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
         <div className="max-w-3xl mx-auto px-4 py-2 flex items-center space-x-2 sm:space-x-3">
           {/* Botón izquierdo: volver o salir */}
           {isFullScreen ? (
@@ -1594,6 +1345,41 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           </div>
         </div>
       </div>
+
+      {/* Mensaje de ayuda */}
+      {showHelp && (
+        <div className="fixed bottom-24 right-8 left-8 sm:left-auto sm:w-80 p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg shadow-lg border border-blue-200 dark:border-blue-800 z-50 animate-fade-in">
+          <button
+            onClick={() => setShowHelp(false)}
+            className="absolute top-2 right-2 text-blue-400 hover:text-blue-500"
+          >
+            <X size={16} />
+          </button>
+          <div className="flex items-start">
+            <HelpCircle className="text-blue-500 w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">Modo Lectura</h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
+                Toca cualquier palabra para ver su traducción. Para traducir un párrafo, pulsa el botón de traducción, selecciona la palabra inicial y final.
+              </p>
+              <div className="text-xs text-blue-600 dark:text-blue-400 flex justify-between items-center">
+                <span>← → para navegar</span>
+                <span>ESC para salir</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mensaje de páginas omitidas */}
+      {showSkippedMessage && pagesSkipped > 0 && (
+        <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 animate-fadeIn">
+          <div className="bg-green-600 text-white py-2 px-5 rounded-full shadow-lg flex items-center space-x-2 text-center max-w-[280px]">
+            <div className="flex-shrink-0 w-4 h-4 rounded-full bg-white"></div>
+            <span className="text-sm">Se {pagesSkipped === 1 ? 'omitió' : 'omitieron'} {pagesSkipped} {pagesSkipped === 1 ? 'página vacía' : 'páginas vacías'} al inicio</span>
+          </div>
+        </div>
+      )}
 
       {/* Indicador de modo selección */}
       {isSelectingTextRange && showSelectionMessage && (
@@ -2018,13 +1804,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           z-index: 9999 !important;
         }
         
-        /* Asegurar que la barra de controles esté por encima de la navegación */
+        /* Barra del Reader debe estar por debajo del header principal pero por encima del contenido */
+        .reader-navigation-bar {
+          z-index: 50 !important;
+        }
+        
+        /* Asegurar que la barra de controles esté por encima de la navegación móvil pero por debajo del header */
         .reader-controls {
           bottom: 56px !important;
           width: 100% !important;
           left: 0 !important;
           right: 0 !important;
-          z-index: 50 !important;
+          z-index: 40 !important;
         }
         /* Ajustes para pantallas más grandes */
         @media screen and (min-width: 640px) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, ChevronLeft, ChevronRight, Clock, Award, BookOpen, Globe, Bookmark, LanguagesIcon, Brain, Languages, Share2, Star, Users, MessageSquare, Zap } from 'lucide-react';
+import { Book, ChevronLeft, ChevronRight, Clock, Award, BookOpen, Globe, Bookmark, LanguagesIcon, Brain, Languages, Share2, Star, Users, MessageSquare, Zap, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useBookContext } from '../context/BookContext';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -11,9 +11,47 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+// Tipos para TypeScript
+type LanguageCode = 'es' | 'en';
+
+interface CommunityBook {
+  id: string;
+  title: string;
+  author: string;
+  cover: string;
+  filename: string;
+  totalPages: number;
+}
+
+interface UserBook {
+  id: string;
+  title: string;
+  user_id: string;
+  cover_url: string;
+  total_pages: number;
+  current_page: number;
+  content: string;
+  created_at: string;
+  last_read: string;
+  bookmarked?: boolean;
+  bookmark_page?: number;
+  bookmark_position?: number;
+  bookmark_updated_at?: string;
+}
+
+interface TestimonialUser {
+  name: string;
+  role: string;
+  text: string;
+  stars: number;
+}
+
 // Datos para el multilenguaje
 const translations = {
   es: {
+    nav: {
+      logout: "Cerrar sesión"
+    },
     hero: {
       title: "Aprende idiomas mientras lees lo que te apasiona",
       subtitle: "Olvídate de las tediosas clases de idiomas. Con Lexingo, mejora tu vocabulario leyendo libros que realmente te interesan.",
@@ -92,6 +130,9 @@ const translations = {
     }
   },
   en: {
+    nav: {
+      logout: "Sign out"
+    },
     hero: {
       title: "Learn languages while reading what you love",
       subtitle: "Forget about tedious language classes. With Lexingo, improve your vocabulary by reading books that truly interest you.",
@@ -169,16 +210,19 @@ const translations = {
       title: "Select your language"
     }
   }
-};
+} as const;
 
 export default function HomePage() {
-  const [recentBooks, setRecentBooks] = useState<any[]>([]);
+  const [recentBooks, setRecentBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
-  const [language, setLanguage] = useState('es'); // Idioma por defecto: español
+  const [language, setLanguage] = useState<LanguageCode>('es');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const t = translations[language]; // Textos según el idioma seleccionado
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<any>(null);
   
-  const [communityBooks, setCommunityBooks] = useState([
+  const t = translations[language];
+  
+  const [communityBooks] = useState<CommunityBook[]>([
     {
       id: 'comm4',
       title: 'The Alchemist',
@@ -216,8 +260,40 @@ export default function HomePage() {
   const { setBook, loadBookAndSkipEmptyPages } = useBookContext();
 
   useEffect(() => {
-    fetchRecentBooks();
+    checkAuthStatus();
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchRecentBooks();
+    }
+  }, [isAuthenticated]);
+
+  // Verificar estado de autenticación
+  const checkAuthStatus = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setIsAuthenticated(!!user);
+      setUser(user);
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cerrar sesión
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      setIsAuthenticated(false);
+      setUser(null);
+      setRecentBooks([]);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   // Cambiar al siguiente slide
   const nextSlide = () => {
@@ -235,8 +311,9 @@ export default function HomePage() {
   };
 
   const fetchRecentBooks = async () => {
+    if (!user) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('books')
         .select('*')
@@ -247,30 +324,21 @@ export default function HomePage() {
       setRecentBooks(data || []);
     } catch (error) {
       console.error('Error fetching books:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleOpenBook = async (book) => {
+  const handleOpenBook = async (book: UserBook) => {
     try {
-      // Indicar que estamos cargando
       setLoading(true);
       console.log(`Abriendo libro: ${book.title}, página guardada: ${book.current_page}`);
       
-      // Verificar que la página actual es válida
       let currentPage = book.current_page || 1;
       
-      // Asegurarnos de que la página está dentro del rango válido
       if (currentPage > book.total_pages) {
         console.log(`La página guardada ${currentPage} excede el total (${book.total_pages}), reseteando a 1`);
         currentPage = 1;
       }
       
-      // Limpiar el libro actual antes de cargar el nuevo
-      setBook(null);
-      
-      // Construir los datos del libro
       try {
         const bookContent = JSON.parse(book.content);
         console.log(`Libro cargado: ${book.title} con ${bookContent.length} páginas`);
@@ -289,10 +357,8 @@ export default function HomePage() {
           bookmark_updated_at: book.bookmark_updated_at
         };
         
-        // Cargar el libro
         loadBookAndSkipEmptyPages(bookData);
         
-        // Esperar un momento antes de navegar
         setTimeout(() => {
           console.log('Navegando a la página del lector');
           navigate('/reader');
@@ -321,30 +387,24 @@ export default function HomePage() {
     try {
       console.log(`Procesando PDF: ${pdfPath}`);
       
-      // Cargar el PDF desde la URL pública
       const loadingTask = pdfjsLib.getDocument(pdfPath);
       const pdf = await loadingTask.promise;
       
-      // Verificar que el número de páginas coincida
       const pdfTotalPages = pdf.numPages;
       console.log(`PDF cargado con ${pdfTotalPages} páginas (esperadas: ${totalPages})`);
       
-      // Crear un array para almacenar el contenido de las páginas
       const pages = [];
       
-      // Procesar cada página
       for (let i = 1; i <= pdfTotalPages; i++) {
         try {
           console.log(`Extrayendo texto de la página ${i}`);
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
           
-          // Extraer el texto
           const pageText = textContent.items
             .map((item: any) => 'str' in item ? item.str : '')
             .join(' ');
           
-          // Añadir la página al array
           pages.push({
             content: pageText.trim() || `[Página ${i} sin texto extraíble]`
           });
@@ -356,7 +416,6 @@ export default function HomePage() {
         }
       }
       
-      // Si el PDF tiene menos páginas que las esperadas, añadir páginas vacías
       if (pdfTotalPages < totalPages) {
         for (let i = pdfTotalPages + 1; i <= totalPages; i++) {
           pages.push({
@@ -369,27 +428,19 @@ export default function HomePage() {
     } catch (error) {
       console.error('Error procesando PDF:', error);
       
-      // En caso de error, devolver páginas con mensajes de error
       return Array.from({ length: totalPages }, (_, i) => ({
         content: `Error al cargar el PDF. Página ${i+1} de ${totalPages}.`
       }));
     }
   };
 
-  const handleOpenCommunityBook = async (book) => {
+  const handleOpenCommunityBook = async (book: CommunityBook) => {
+    if (!user) return;
+    
     try {
-      // Mostramos una animación de carga
       setLoading(true);
       console.log(`Abriendo libro comunitario: ${book.title}`);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('No hay usuario autenticado');
-        setLoading(false);
-        return;
-      }
-      
-      // Verificamos si ya existe este libro en la biblioteca del usuario
       const { data: existingBooks, error: queryError } = await supabase
         .from('books')
         .select('*')
@@ -403,33 +454,27 @@ export default function HomePage() {
       }
       
       if (existingBooks && existingBooks.length > 0) {
-        // Si ya existe, cargamos ese libro
         console.log('El libro ya existe en la biblioteca del usuario, cargándolo...');
         handleOpenBook(existingBooks[0]);
       } else {
         console.log('El libro no existe en la biblioteca del usuario, creándolo...');
         
-        // Construir la ruta completa al PDF
         const pdfPath = `/books/${book.filename}`;
         console.log(`Ruta del PDF: ${pdfPath}`);
         
-        // Procesar el PDF para extraer el contenido real
         console.log('Procesando PDF para extraer contenido real...');
         const pdfPages = await processPDF(pdfPath, book.totalPages);
         console.log(`PDF procesado. Se extrajeron ${pdfPages.length} páginas`);
         
-        // Verificar que se obtuvo contenido
         if (!pdfPages || pdfPages.length === 0) {
           console.error('No se pudo extraer contenido del PDF');
           setLoading(false);
           return;
         }
         
-        // Generamos un UUID válido para el ID del libro
         const bookId = generateUUID();
         console.log(`ID UUID generado para el libro: ${bookId}`);
         
-        // Creamos el registro en la base de datos
         const newBook = {
           id: bookId,
           title: book.title,
@@ -444,7 +489,6 @@ export default function HomePage() {
         
         console.log('Insertando libro en la base de datos:', newBook.title);
         
-        // Insertar en la base de datos
         const { data: insertedBook, error: insertError } = await supabase
           .from('books')
           .insert(newBook)
@@ -458,12 +502,8 @@ export default function HomePage() {
         
         console.log('Libro guardado correctamente en la base de datos, ID:', insertedBook[0]?.id);
         
-        // Limpiar el libro actual antes de cargar el nuevo
-        setBook(null);
-        
-        // Cargar este libro para lectura
         const bookData = {
-          id: bookId, // Asegurarnos de usar el mismo UUID
+          id: bookId,
           title: book.title,
           pages: pdfPages,
           currentPage: 1,
@@ -476,14 +516,11 @@ export default function HomePage() {
         console.log('Cargando libro en el contexto:', bookData.title);
         loadBookAndSkipEmptyPages(bookData);
         
-        // Actualizamos la lista de libros recientes
         console.log('Actualizando lista de libros recientes');
         fetchRecentBooks();
       }
       
-      // Esperamos un momento para asegurar que el libro se ha cargado correctamente
       setTimeout(() => {
-        // Navegamos al lector
         console.log('Navegando a la página del lector');
         navigate('/reader');
       }, 500);
@@ -494,6 +531,302 @@ export default function HomePage() {
     }
   };
 
+  // Mostrar loading mientras se verifica la autenticación
+  if (loading && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-blue-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  // Vista para usuarios autenticados (simplificada)
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+          {/* Lecturas Recientes */}
+          <section className="py-8">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                {t.recent.title}
+              </h2>
+              <p className="text-lg text-gray-600 dark:text-gray-300">
+                {t.recent.description}
+              </p>
+            </div>
+            
+            {recentBooks.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {recentBooks.map((book) => (
+                  <div
+                    key={book.id}
+                    className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition cursor-pointer"
+                    onClick={() => handleOpenBook(book)}
+                  >
+                    <div className="aspect-[3/4] relative">
+                      <img 
+                        src={book.cover_url || '/img/books/default-cover.jpg'}
+                        alt={book.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end">
+                        <div className="p-4 text-white w-full">
+                          <h3 className="font-bold text-lg line-clamp-2 mb-1">{book.title}</h3>
+                          <div className="flex items-center text-sm opacity-90 mb-2">
+                            <Clock className="w-4 h-4 mr-1" />
+                            <span>
+                              {new Date(book.last_read).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200/30 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full" 
+                              style={{ width: `${Math.round((book.current_page / book.total_pages) * 100)}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-right mt-1 opacity-75">
+                            {book.current_page} / {book.total_pages}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-lg">
+                <Book className="w-16 h-16 mx-auto text-blue-500 mb-4" />
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  {t.recent.empty}
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  Explora nuestra biblioteca comunitaria para comenzar
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Biblioteca Comunitaria */}
+          <section className="py-8 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex flex-col md:flex-row items-center justify-between mb-8">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                  {t.community.title}
+                </h2>
+                <p className="text-lg text-gray-600 dark:text-gray-300">
+                  {t.community.description}
+                </p>
+              </div>
+              <div className="flex space-x-2 mt-4 md:mt-0">
+                <button
+                  onClick={prevSlide}
+                  className="p-2 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                </button>
+                <button 
+                  onClick={nextSlide}
+                  className="p-2 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <ChevronRight className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {communityBooks.map((book, index) => (
+                <div 
+                  key={book.id}
+                  className={`bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition duration-300 cursor-pointer ${
+                    index === currentSlide ? 'ring-2 ring-blue-400' : ''
+                  }`}
+                  onClick={() => handleOpenCommunityBook(book)}
+                >
+                  <div className="aspect-[3/4] relative">
+                    <img
+                      src={book.cover}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end">
+                      <div className="p-4 text-white w-full">
+                        <h3 className="font-bold text-lg line-clamp-2 mb-1">{book.title}</h3>
+                        <p className="text-sm opacity-90 mb-2">{book.author}</p>
+                        <div className="flex items-center justify-between text-xs opacity-75">
+                          <span>{book.totalPages} páginas</span>
+                          <span className="bg-blue-500/80 px-2 py-1 rounded">Nuevo</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </main>
+
+        {/* Footer completo */}
+        <footer className="bg-gray-900 text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+              {/* Información de la empresa */}
+              <div className="lg:col-span-2">
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-3xl font-bold text-blue-400">Lexingo</span>
+                  <span className="text-blue-300">|</span>
+                  <span className="text-gray-300">Aprende idiomas leyendo</span>
+                </div>
+                <p className="text-gray-300 mb-6 leading-relaxed">
+                  Revoluciona tu aprendizaje de idiomas con nuestra plataforma innovadora. 
+                  Lee libros que te apasionan mientras aprendes vocabulario de forma natural y contextual.
+                </p>
+                <div className="flex space-x-4">
+                  <a href="#" className="text-gray-400 hover:text-blue-400 transition-colors">
+                    <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/>
+                    </svg>
+                  </a>
+                  <a href="#" className="text-gray-400 hover:text-blue-400 transition-colors">
+                    <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M22.46 6c-.77.35-1.6.58-2.46.69.88-.53 1.56-1.37 1.88-2.38-.83.5-1.75.85-2.72 1.05C18.37 4.5 17.26 4 16 4c-2.35 0-4.27 1.92-4.27 4.29 0 .34.04.67.11.98C8.28 9.09 5.11 7.38 3 4.79c-.37.63-.58 1.37-.58 2.15 0 1.49.75 2.81 1.91 3.56-.71 0-1.37-.2-1.95-.5v.03c0 2.08 1.48 3.82 3.44 4.21a4.22 4.22 0 0 1-1.93.07 4.28 4.28 0 0 0 4 2.98 8.521 8.521 0 0 1-5.33 1.84c-.34 0-.68-.02-1.02-.06C3.44 20.29 5.7 21 8.12 21 16 21 20.33 14.46 20.33 8.79c0-.19 0-.37-.01-.56.84-.6 1.56-1.36 2.14-2.23z"/>
+                    </svg>
+                  </a>
+                  <a href="#" className="text-gray-400 hover:text-blue-400 transition-colors">
+                    <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                  </a>
+                  <a href="#" className="text-gray-400 hover:text-blue-400 transition-colors">
+                    <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.174-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 2.567-1.645 0-2.617-1.02-4.626-2.793-4.626z"/>
+                    </svg>
+                  </a>
+                </div>
+              </div>
+
+              {/* Producto */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-white">Producto</h3>
+                <ul className="space-y-3">
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Características</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Planes y Precios</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Aplicación Móvil</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Integración API</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Actualizaciones</a></li>
+                </ul>
+              </div>
+
+              {/* Recursos */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-white">Recursos</h3>
+                <ul className="space-y-3">
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Centro de Ayuda</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Guías y Tutoriales</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Blog</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Comunidad</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Webinarios</a></li>
+                </ul>
+              </div>
+
+              {/* Empresa */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-white">Empresa</h3>
+                <ul className="space-y-3">
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Sobre Nosotros</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Equipo</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Carreras</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Prensa</a></li>
+                  <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Contacto</a></li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Sección de newsletter */}
+            <div className="border-t border-gray-800 mt-12 pt-8">
+              <div className="flex flex-col lg:flex-row justify-between items-center">
+                <div className="mb-6 lg:mb-0">
+                  <h3 className="text-xl font-semibold mb-2">Mantente actualizado</h3>
+                  <p className="text-gray-400">Recibe las últimas noticias y tips de aprendizaje directamente en tu correo.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                  <input
+                    type="email"
+                    placeholder="Tu email"
+                    className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
+                  />
+                  <button className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors whitespace-nowrap">
+                    Suscribirse
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de idioma y enlaces legales */}
+            <div className="border-t border-gray-800 mt-8 pt-8">
+              <div className="flex flex-col lg:flex-row justify-between items-center">
+                <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6 mb-6 lg:mb-0">
+                  <div className="flex items-center space-x-3">
+                    <Globe className="h-5 w-5 text-gray-400" />
+                    <span className="text-gray-400 text-sm">Idioma:</span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setLanguage('es')}
+                        className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                          language === 'es' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
+                      >
+                        Español
+                      </button>
+                      <button
+                        onClick={() => setLanguage('en')}
+                        className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                          language === 'en' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
+                      >
+                        English
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap justify-center lg:justify-end items-center space-x-6 text-sm">
+                  <a href="/terms" className="text-gray-400 hover:text-white transition-colors">
+                    Términos de Servicio
+                  </a>
+                  <a href="/privacy" className="text-gray-400 hover:text-white transition-colors">
+                    Política de Privacidad
+                  </a>
+                  <a href="/cookies" className="text-gray-400 hover:text-white transition-colors">
+                    Política de Cookies
+                  </a>
+                  <a href="/dmca" className="text-gray-400 hover:text-white transition-colors">
+                    DMCA
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Copyright */}
+            <div className="border-t border-gray-800 mt-8 pt-6 text-center">
+              <div className="flex flex-col sm:flex-row justify-between items-center text-sm text-gray-400">
+                <p>© {new Date().getFullYear()} Lexingo. Todos los derechos reservados.</p>
+                <p className="mt-2 sm:mt-0">
+                  Hecho con ❤️ para estudiantes de idiomas en todo el mundo
+                </p>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // Vista para usuarios no autenticados (landing completo)
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
       {/* Barra de navegación con selector de idioma */}
@@ -511,7 +844,7 @@ export default function HomePage() {
                 <Globe className="h-4 w-4 mr-1" />
                 {language === 'es' ? 'ESP' : 'ENG'}
               </button>
-          </div>
+            </div>
           </div>
         </div>
       </nav>
@@ -534,7 +867,7 @@ export default function HomePage() {
                 <button className="px-8 py-4 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-medium rounded-lg shadow hover:shadow-md transition">
                   {t.hero.secondaryCta}
                 </button>
-            </div>
+              </div>
             </div>
             <div className="relative h-[400px] lg:h-[500px] rounded-2xl overflow-hidden shadow-2xl">
               <img
@@ -568,25 +901,25 @@ export default function HomePage() {
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg hover:shadow-xl transition">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-4">
                 <Languages className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                      </div>
+              </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                 {t.features.translate.title}
               </h3>
               <p className="text-gray-600 dark:text-gray-300">
                 {t.features.translate.description}
               </p>
-                      </div>
+            </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg hover:shadow-xl transition">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-4">
                 <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                    </div>
+              </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                 {t.features.reading.title}
               </h3>
               <p className="text-gray-600 dark:text-gray-300">
                 {t.features.reading.description}
               </p>
-                  </div>
+            </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg hover:shadow-xl transition">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-4">
                 <Bookmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -925,72 +1258,6 @@ export default function HomePage() {
               </table>
             </div>
           </div>
-          
-          {/* Gráfico tipo radar para comparación visual */}
-          <div className="mt-12 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 text-center">
-              Comparativa de efectividad
-            </h3>
-            <div className="w-full h-64 flex justify-center">
-              <svg viewBox="0 0 500 400" className="w-full h-full max-w-lg">
-                {/* Pentágono de fondo (5 ejes) */}
-                <polygon 
-                  points="250,50 450,150 400,350 100,350 50,150" 
-                  fill="none" 
-                  stroke="#e5e7eb" 
-                  strokeWidth="1"
-                />
-                <polygon 
-                  points="250,100 390,175 350,300 150,300 110,175" 
-                  fill="none" 
-                  stroke="#e5e7eb" 
-                  strokeWidth="1"
-                />
-                <polygon 
-                  points="250,150 330,200 300,250 200,250 170,200" 
-                  fill="none" 
-                  stroke="#e5e7eb" 
-                  strokeWidth="1"
-                />
-                
-                {/* Ejes */}
-                <line x1="250" y1="50" x2="250" y2="350" stroke="#e5e7eb" strokeWidth="1" />
-                <line x1="50" y1="150" x2="450" y2="150" stroke="#e5e7eb" strokeWidth="1" />
-                <line x1="100" y1="350" x2="400" y2="50" stroke="#e5e7eb" strokeWidth="1" />
-                <line x1="400" y1="350" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="1" />
-                
-                {/* Líneas de datos para Lexingo */}
-                <polygon 
-                  points="250,60 430,160 380,330 120,330 70,160" 
-                  fill="rgba(59, 130, 246, 0.2)" 
-                  stroke="#3b82f6" 
-                  strokeWidth="2"
-                />
-                
-                {/* Líneas de datos para apps tradicionales */}
-                <polygon 
-                  points="250,150 350,190 320,260 180,260 150,190" 
-                  fill="rgba(239, 68, 68, 0.2)" 
-                  stroke="#ef4444" 
-                  strokeWidth="2"
-                />
-                
-                {/* Etiquetas de los ejes */}
-                <text x="250" y="40" textAnchor="middle" fill="currentColor" className="text-sm">Contexto</text>
-                <text x="460" y="150" textAnchor="start" fill="currentColor" className="text-sm">Personalización</text>
-                <text x="410" y="370" textAnchor="middle" fill="currentColor" className="text-sm">Natural</text>
-                <text x="90" y="370" textAnchor="middle" fill="currentColor" className="text-sm">Práctico</text>
-                <text x="40" y="150" textAnchor="end" fill="currentColor" className="text-sm">Diversión</text>
-                
-                {/* Leyenda */}
-                <rect x="180" y="390" width="15" height="15" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="2" />
-                <text x="200" y="402" textAnchor="start" fill="currentColor" className="text-sm">Lexingo</text>
-                
-                <rect x="280" y="390" width="15" height="15" fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="2" />
-                <text x="300" y="402" textAnchor="start" fill="currentColor" className="text-sm">Apps tradicionales</text>
-              </svg>
-            </div>
-          </div>
         </section>
 
         {/* Testimonios de usuarios */}
@@ -1005,7 +1272,7 @@ export default function HomePage() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {t.testimonials.users.map((user, index) => (
+            {t.testimonials.users.map((user: TestimonialUser, index: number) => (
               <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 hover:shadow-xl transition">
                 <div className="flex items-center mb-4">
                   <div className="bg-blue-100 dark:bg-blue-900/30 w-12 h-12 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 mr-4">
@@ -1094,79 +1361,6 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-
-        {/* Lecturas Recientes */}
-        {recentBooks.length > 0 && (
-          <section className="py-16 border-t border-gray-100 dark:border-gray-800">
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                {t.recent.title}
-              </h2>
-              <p className="text-lg text-gray-600 dark:text-gray-300">
-                {t.recent.description}
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recentBooks.map((book) => (
-                <div
-                  key={book.id}
-                  className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition flex cursor-pointer"
-                  onClick={() => handleOpenBook(book)}
-                >
-                  <div className="w-1/3">
-                    <div className="relative h-full">
-                      <img 
-                        src={book.cover_url || '/img/books/default-cover.jpg'}
-                        alt={book.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  </div>
-                  <div className="w-2/3 p-4 flex flex-col justify-between">
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white line-clamp-2 mb-1">{book.title}</h3>
-                      <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span>
-                          {new Date(book.last_read).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                        <div 
-                          className="bg-blue-600 h-2.5 rounded-full" 
-                          style={{ width: `${Math.round((book.current_page / book.total_pages) * 100)}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-right mt-1 text-gray-500 dark:text-gray-400">
-                        {book.current_page} / {book.total_pages}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Mensaje de bienvenida si no hay libros recientes */}
-        {recentBooks.length === 0 && !loading && (
-          <section className="py-16 border-t border-gray-100 dark:border-gray-800">
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-lg">
-              <Book className="w-16 h-16 mx-auto text-blue-500 mb-4" />
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                {t.recent.empty}
-                  </h3>
-              <button 
-                onClick={() => document.querySelector('.scroll-to-community')?.scrollIntoView({ behavior: 'smooth' })}
-                className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                {t.hero.cta}
-              </button>
-            </div>
-          </section>
-        )}
       </main>
 
       {/* Footer con selector de idiomas */}
@@ -1228,16 +1422,6 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
-
-      {/* Indicador de carga */}
-      {loading && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-xl">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="text-center mt-4 text-gray-700 dark:text-gray-300">Cargando...</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
