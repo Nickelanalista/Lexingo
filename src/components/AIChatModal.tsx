@@ -319,7 +319,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
 
   return (
     <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[20000] p-2 sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -327,27 +327,27 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
       }}
     >
       <div 
-        className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-2xl h-[80vh] max-h-[700px] flex flex-col overflow-hidden border border-gray-700"
+        className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-2xl min-h-[60vh] max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden border border-gray-700"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3 px-4 border-b border-gray-700 bg-gray-850">
-          <div className="flex items-center">
-            <img src="/img/icono_lexingo.png" alt="Lexingo AI" className="w-8 h-8 rounded-full mr-3 border-2 border-teal-400"/> 
-            <div>
-              <h3 className="text-lg font-semibold text-gray-100">Lexingo AI</h3>
-              <p className="text-xs text-teal-300 -mt-1">Asistente IA gramatical y multilingüe</p>
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-700 bg-gray-850 flex-shrink-0">
+          <div className="flex items-center min-w-0">
+            <img src="/img/icono_lexingo.png" alt="Lexingo AI" className="w-8 h-8 rounded-full mr-3 border-2 border-teal-400 flex-shrink-0"/> 
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-gray-100 truncate">Lexingo AI</h3>
+              <p className="text-xs text-teal-300 -mt-1 truncate">Asistente IA gramatical y multilingüe</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="text-gray-400 hover:text-white p-1 rounded-full"
+            className="text-gray-400 hover:text-white p-1 rounded-full flex-shrink-0 ml-2"
             aria-label="Cerrar chat"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div ref={chatContentRef} className="flex-grow p-4 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+        <div ref={chatContentRef} className="flex-grow p-3 sm:p-4 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 min-h-0">
           {conversation.filter(msg => msg.role !== 'system').map((msg, index) => {
             const isAssistant = msg.role === 'assistant';
             let messageParts: React.ReactNode[] = [];
@@ -416,9 +416,9 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
                     </>
                   )}
                   <div 
-                    className={`max-w-[75%] p-3 rounded-xl shadow ${msg.role === 'user' 
+                    className={`max-w-[85%] sm:max-w-[75%] p-3 rounded-xl shadow ${msg.role === 'user' 
                       ? 'bg-blue-600 text-white rounded-br-none' 
-                      : 'bg-gray-700 text-gray-200 rounded-bl-none'} whitespace-pre-wrap`}
+                      : 'bg-gray-700 text-gray-200 rounded-bl-none'} whitespace-pre-wrap text-sm sm:text-base`}
                   >
                     {messageParts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}
                   </div>
@@ -429,7 +429,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
           {isLoading && conversation.length === 1 && (
             <div className="flex items-end space-x-2 justify-start">
               <img src="/img/icono_lexingo.png" alt="Lexi" className="w-8 h-8 rounded-full border-2 border-purple-400 self-start flex-shrink-0"/>
-              <div className="max-w-[75%] p-3 rounded-lg shadow bg-gray-700 text-gray-200 rounded-bl-none flex items-center">
+              <div className="max-w-[85%] sm:max-w-[75%] p-3 rounded-lg shadow bg-gray-700 text-gray-200 rounded-bl-none flex items-center text-sm sm:text-base">
                 <Loader2 size={18} className="animate-spin mr-3 text-purple-400" />
                 <span>Lexingo AI está preparando tu bienvenida...</span>
               </div>
@@ -438,7 +438,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
           {isLoading && conversation.length > 1 && conversation[conversation.length -1].role === 'user' && (
             <div className="flex items-end space-x-2 justify-start">
               <img src="/img/icono_lexingo.png" alt="Lexi" className="w-8 h-8 rounded-full border-2 border-purple-400 self-start flex-shrink-0"/>
-              <div className="max-w-[75%] p-3 rounded-lg shadow bg-gray-700 text-gray-200 rounded-bl-none flex items-center">
+              <div className="max-w-[85%] sm:max-w-[75%] p-3 rounded-lg shadow bg-gray-700 text-gray-200 rounded-bl-none flex items-center text-sm sm:text-base">
                 <Loader2 size={18} className="animate-spin mr-3 text-purple-400" />
                 <span>Lexingo AI está pensando...</span>
               </div>
@@ -446,7 +446,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-700 bg-gray-850">
+        <div className="p-3 sm:p-4 border-t border-gray-700 bg-gray-850">
           <div className="flex items-center bg-gray-700 rounded-lg p-1.5 pr-2.5 relative">
             {/* Área de Input o Indicador de Estado */} 
             <div className="flex-grow flex items-center justify-center min-h-[40px]"> {/* Asegura altura mínima */} 
@@ -468,7 +468,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
                   placeholder="Escribe tu pregunta sobre el texto..."
-                  className="w-full h-full bg-transparent text-gray-200 placeholder-gray-400 focus:outline-none px-2 py-1"
+                  className="w-full h-full bg-transparent text-gray-200 placeholder-gray-400 focus:outline-none px-2 py-1 text-sm sm:text-base"
                   disabled={isLoading}
                   onMouseDown={(e) => e.stopPropagation()}
                 />

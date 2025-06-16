@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Book, Trash2, BookOpen, Edit2, Check, X, BookmarkCheck } from 'lucide-react';
+import { Book, Trash2, BookOpen, Edit2, Check, X, BookmarkCheck, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useBookContext } from '../context/BookContext';
 
@@ -164,9 +164,18 @@ export default function BooksPage() {
             Mis Libros
           </span>
         </h1>
-        <p className="text-base text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+        <p className="text-base text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-4">
           Disfruta de tus libros en un formato multilingüe
         </p>
+        
+        {/* Botón de añadir libro */}
+        <button
+          onClick={() => navigate('/upload')}
+          className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+        >
+          <Plus size={20} className="mr-2" />
+          Añadir Libro
+        </button>
       </div>
 
       {books.length === 0 ? (

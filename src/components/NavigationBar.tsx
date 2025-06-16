@@ -179,7 +179,9 @@ const NavigationBar: React.FC = () => {
           <div className="flex-1 flex items-center justify-between max-w-5xl">
             {/* Logo en web */}
             <div className="hidden md:flex items-center">
-              <img src={logoSrc} alt="Lexingo" className="h-11" />
+              <Link to="/" className="flex items-center">
+                <img src={logoSrc} alt="Lexingo" className="h-11 hover:opacity-80 transition-opacity" />
+              </Link>
             </div>
 
             {/* Navegación desktop - centrada */}
@@ -247,7 +249,9 @@ const NavigationBar: React.FC = () => {
 
             {/* Logo centrado solo en móvil */}
             <div className="md:hidden flex items-center justify-center">
-              <img src={logoSrc} alt="Lexingo" className="h-11" />
+              <Link to="/" className="flex items-center">
+                <img src={logoSrc} alt="Lexingo" className="h-11 hover:opacity-80 transition-opacity" />
+              </Link>
             </div>
 
             {/* Perfil de usuario */}

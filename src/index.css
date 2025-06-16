@@ -26,3 +26,53 @@ html, body {
     height: calc(var(--vh, 1vh) * 100);
   }
 }
+
+/* Hide scrollbar utility */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  /* Animación de degradado elegante tipo IA - ULTRA LENTA y TRANQUILA */
+  .animate-gradient-x {
+    animation: gradient-x 25s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+  }
+}
+
+/* Keyframes para animación de degradado ultra suave y lenta */
+@keyframes gradient-x {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  20% {
+    background-position: 50% 50%;
+  }
+  40% {
+    background-position: 100% 50%;
+  }
+  60% {
+    background-position: 150% 50%;
+  }
+  80% {
+    background-position: 200% 50%;
+  }
+}

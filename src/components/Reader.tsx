@@ -192,14 +192,66 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       setSourceBookLanguage(detectedLanguage);
       setBookLanguageDetected(true);
       
-      // Solo si detectamos español y el usuario no ha seleccionado un idioma específico, 
-      // establecemos inglés como idioma de visualización por defecto
-      if (detectedLanguage === 'es' && currentBookLanguage === 'en') {
-        console.log('[DETECCIÓN-INICIAL] Libro en español detectado, manteniendo inglés como idioma de visualización por defecto');
-        // currentBookLanguage ya está en 'en' por defecto, no necesitamos cambiarlo
-      }
+      // NUEVA LÓGICA: Verificar si necesitamos traducir automáticamente
+      const checkAndAutoTranslate = async () => {
+        try {
+          // Obtener el idioma objetivo preferido del usuario
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('preferred_language')
+            .eq('id', user.id)
+            .single();
+
+          const userPreferredLanguage = profile?.preferred_language || 'en';
+          console.log(`[DETECCIÓN-INICIAL] Idioma preferido del usuario: ${userPreferredLanguage}`);
+          console.log(`[DETECCIÓN-INICIAL] Idioma del libro: ${detectedLanguage}`);
+
+          // NUEVA LÓGICA: Si los idiomas son iguales, NO hacer nada
+          if (detectedLanguage === userPreferredLanguage) {
+            console.log('[DETECCIÓN-INICIAL] Idiomas coinciden, no se requiere traducción automática');
+            setCurrentBookLanguage(detectedLanguage);
+            setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+            return;
+          }
+
+          // Solo traducir si los idiomas son diferentes
+          console.log(`[DETECCIÓN-INICIAL] Idiomas diferentes detectados. Iniciando traducción automática de ${detectedLanguage} a ${userPreferredLanguage}`);
+          
+          // Actualizar el idioma de visualización
+          setCurrentBookLanguage(userPreferredLanguage);
+          
+          // Traducir la página actual automáticamente
+          if (book.pages[book.currentPage - 1]?.content) {
+            setIsCurrentPageTranslating(true);
+            try {
+              const translatedContent = await translatePageText(
+                book.pages[book.currentPage - 1].content,
+                userPreferredLanguage,
+                detectedLanguage
+              );
+              setCurrentPageContentForDisplay(translatedContent);
+              console.log(`[DETECCIÓN-INICIAL] Página ${book.currentPage} traducida automáticamente`);
+            } catch (error) {
+              console.error('[DETECCIÓN-INICIAL] Error en traducción automática:', error);
+              setCurrentPageContentForDisplay(book.pages[book.currentPage - 1].content);
+            } finally {
+              setIsCurrentPageTranslating(false);
+            }
+          }
+        } catch (error) {
+          console.error('[DETECCIÓN-INICIAL] Error al verificar idioma preferido:', error);
+          // Fallback: usar configuración por defecto sin traducir
+          setCurrentBookLanguage(detectedLanguage);
+          setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+        }
+      };
+
+      checkAndAutoTranslate();
     }
-  }, [book, isLoading, bookLanguageDetected, currentBookLanguage]);
+  }, [book, isLoading, bookLanguageDetected, translatePageText]);
   
   // Preservar la página actual cuando se actualiza el libro por OCR
   const prevBookRef = useRef<Book | null>(null);
@@ -374,13 +426,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
     // GUARDIA: Si el contenido ya se mostró para esta página/idioma
     if (
-      lastDisplayedPageAndLangRef.current.page === book.currentPage &&
-      lastDisplayedPageAndLangRef.current.lang === currentBookLanguage &&
-      currentPageContentForDisplay !== null &&
-      !isCurrentPageTranslating
+      lastDisplayedPageAndLangRef.current?.page === book.currentPage && 
+      lastDisplayedPageAndLangRef.current?.lang === currentBookLanguage && 
+      currentPageContentForDisplay
     ) {
       console.log(`[PAGE_N_EFFECT] Content for page ${book.currentPage} (${currentBookLanguage}) already displayed. Skipping re-processing.`);
-      if (isCurrentPageTranslating) setIsCurrentPageTranslating(false);
+      console.log(`[PAGE_N_EFFECT] Current content (primeros 100 chars): ${currentPageContentForDisplay.substring(0, 100)}...`);
       return;
     }
 
@@ -428,6 +479,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         .then(translated => {
           if (!book) return;
           console.log(`[PAGE_N_EFFECT] Traducción para página ${book.currentPage} completada.`);
+          console.log(`[PAGE_N_EFFECT] Contenido traducido (primeros 100 chars): ${translated?.substring(0, 100)}...`);
           setCurrentPageContentForDisplay(translated || originalContent);
           lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
         })
@@ -633,6 +685,37 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showTranslation]);
 
+  // Función para traducir el texto seleccionado automáticamente
+  const translateTextSelection = async (text: string, sourceLang: string, targetLang: string) => {
+    if (!text) return;
+    
+    setShowAIChatModal(false); // Asegurarse de que el chat esté cerrado
+    setIsTranslating(true);
+    
+    try {
+      // Usamos translateParagraph del hook, que ahora toma source y target
+      const result = await translateParagraph(text, sourceLang, targetLang);
+      if (result && typeof result === 'object' && 'translated' in result) {
+        setTranslatedText(result.translated);
+        setShowTranslation(true);
+      
+        // Mostrar el mensaje de "Texto seleccionado" solo por 1.5 segundos
+        if (selectionMessageTimeoutRef.current) {
+          clearTimeout(selectionMessageTimeoutRef.current);
+        }
+        
+        setShowSelectionMessage(true);
+        selectionMessageTimeoutRef.current = setTimeout(() => {
+          setShowSelectionMessage(false);
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Error translating text:', error);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   // Manejar el clic en una palabra (para traducción rápida o selección de rango)
   const handleWordClick = useCallback((word: Word, event: React.MouseEvent<HTMLSpanElement>, index: number) => {
     if (isSelectingTextRange) {
@@ -680,38 +763,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       clearTimeout(controlsTimeoutRef.current);
     }
     }
-  }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords, translateWord, currentBookLanguage]); // Añadir currentBookLanguage y translateWord
-
-  // Función para traducir el texto seleccionado automáticamente
-  const translateTextSelection = async (text: string, sourceLang: string, targetLang: string) => {
-    if (!text) return;
-    
-    setShowAIChatModal(false); // Asegurarse de que el chat esté cerrado
-    setIsTranslating(true);
-    
-    try {
-      // Usamos translateParagraph del hook, que ahora toma source y target
-      const result = await translateParagraph(text, sourceLang, targetLang);
-      if (result && typeof result === 'object' && 'translated' in result) {
-        setTranslatedText(result.translated);
-        setShowTranslation(true);
-      
-        // Mostrar el mensaje de "Texto seleccionado" solo por 1.5 segundos
-        if (selectionMessageTimeoutRef.current) {
-          clearTimeout(selectionMessageTimeoutRef.current);
-        }
-        
-        setShowSelectionMessage(true);
-        selectionMessageTimeoutRef.current = setTimeout(() => {
-          setShowSelectionMessage(false);
-        }, 1500);
-      }
-    } catch (error) {
-      console.error('Error translating text:', error);
-    } finally {
-      setIsTranslating(false);
-    }
-  };
+  }, [isSelectingTextRange, startWordIndex, endWordIndex, allWords, translateTextSelection, currentBookLanguage]);
 
   // Iniciar el modo de selección de texto
   const startTextSelection = () => {
@@ -1095,7 +1147,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     setCurrentBookLanguage('en');
   }, []); // Ejecutar solo una vez al montar
 
-  // Nuevo efecto para cargar el idioma preferido del usuario, usando tanto localStorage como Supabase
+  // Cargar idioma preferido del usuario al montar el componente
   useEffect(() => {
     const loadPreferredLanguage = async () => {
       try {
@@ -1103,13 +1155,17 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         if (user) {
           const { data, error } = await supabase
             .from('profiles')
-            .select('*')
+            .select('preferred_language')
             .eq('id', user.id)
             .single();
             
           if (!error && data && data.preferred_language) {
             console.log('Idioma cargado desde Supabase:', data.preferred_language);
-            setCurrentBookLanguage(data.preferred_language);
+            // Solo establecer el idioma si no hemos detectado el idioma del libro aún
+            // Esto evita conflictos con la traducción automática
+            if (!bookLanguageDetected) {
+              setCurrentBookLanguage(data.preferred_language);
+            }
           }
         }
       } catch (error) {
@@ -1117,8 +1173,11 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       }
     };
     
-    loadPreferredLanguage();
-  }, []);
+    // Solo cargar si no hay libro o si el libro no ha sido procesado aún
+    if (!book || !bookLanguageDetected) {
+      loadPreferredLanguage();
+    }
+  }, [book, bookLanguageDetected]);
   
   // Función mejorada para guardar el idioma preferido en ambos lugares
   const savePreferredLanguage = async (languageCode: string) => {
@@ -1651,17 +1710,31 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           
           {/* Contenido */}
           <div className="p-4">
-            {/* Texto original */}
+            {/* Texto original con botón de audio al lado */}
             <div className="mb-4">
-              <p className="font-medium mb-1 text-gray-200 text-sm">
-                {selectedText}
-              </p>
+              <div className="flex items-start justify-between">
+                <p className="font-medium text-gray-200 text-sm flex-1 mr-2">
+                  {selectedText}
+                </p>
+                <button
+                  onClick={isPlayingAudio === currentBookLanguage ? stopAudio : () => playTranslationAudio(currentBookLanguage, selectedText)}
+                  className="w-5 h-5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 flex items-center justify-center transition-all duration-200 hover:scale-110 flex-shrink-0"
+                  disabled={isPlayingAudio === 'es' || !['en', 'es', 'it', 'fr', 'ja', 'de', 'pt'].includes(currentBookLanguage)}
+                  title={`Escuchar en ${getLanguageName(currentBookLanguage)}`}
+                >
+                  {isPlayingAudio === currentBookLanguage ? (
+                    <VolumeX size={10} className="text-red-400" />
+                  ) : (
+                    <Volume2 size={10} className="text-blue-400" />
+                  )}
+                </button>
+              </div>
             </div>
             
             {/* Separador */}
             <div className="border-t border-gray-700 my-3"></div>
             
-            {/* Texto traducido */}
+            {/* Texto traducido con botón de audio al lado */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm text-purple-300 font-medium">Traducción</div>
@@ -1670,12 +1743,26 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                 )}
               </div>
               
-              <p className="font-medium text-blue-300">
-                {translatedText}
-              </p>
+              <div className="flex items-start justify-between mb-3">
+                <p className="font-medium text-blue-300 flex-1 mr-2">
+                  {translatedText}
+                </p>
+                <button
+                  onClick={isPlayingAudio === 'es' ? stopAudio : () => playTranslationAudio('es', translatedText)}
+                  className="w-5 h-5 rounded-full bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 flex items-center justify-center transition-all duration-200 hover:scale-110 flex-shrink-0"
+                  disabled={isPlayingAudio === currentBookLanguage}
+                  title="Escuchar en Español"
+                >
+                  {isPlayingAudio === 'es' ? (
+                    <VolumeX size={10} className="text-red-400" />
+                  ) : (
+                    <Volume2 size={10} className="text-green-400" />
+                  )}
+                </button>
+              </div>
               
-              {/* Botones de audio */}
-              <div className="flex justify-end space-x-2 mt-3">
+              {/* Botón de consulta IA centrado y más pequeño */}
+              <div className="flex justify-center mt-2">
                 <button
                   onClick={() => {
                     if (selectedText) {
@@ -1683,28 +1770,11 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                       setShowAIChatModal(true);
                     }
                   }}
-                  className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded text-xs text-white"
+                  className="flex items-center space-x-1.5 px-2.5 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 border border-purple-400/30 rounded-full text-xs text-purple-300 hover:text-purple-200 transition-all duration-200 hover:scale-105"
                   title="Consultar con IA sobre este texto"
                 >
-                  <Sparkles size={14} />
+                  <Sparkles size={10} />
                   <span>Consultar IA</span>
-                </button>
-                <button
-                  onClick={isPlayingAudio === currentBookLanguage ? stopAudio : () => playTranslationAudio(currentBookLanguage, selectedText)}
-                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === currentBookLanguage ? 'bg-red-900/50 hover:bg-red-800' : 'bg-gray-700 hover:bg-gray-600'} rounded text-xs`}
-                  disabled={isPlayingAudio === 'es' || !['en', 'es', 'it', 'fr', 'ja', 'de', 'pt'].includes(currentBookLanguage) }
-                >
-                  <span className="capitalize">{isPlayingAudio === currentBookLanguage ? "Detener" : getLanguageName(currentBookLanguage)}</span>
-                  {isPlayingAudio === currentBookLanguage ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                </button>
-                
-                <button
-                  onClick={isPlayingAudio === 'es' ? stopAudio : () => playTranslationAudio('es', translatedText)}
-                  className={`flex items-center space-x-1 px-3 py-1.5 ${isPlayingAudio === 'es' ? 'bg-red-900/50 hover:bg-red-800' : 'bg-blue-900/50 hover:bg-blue-800'} rounded text-xs`}
-                  disabled={isPlayingAudio === 'en'}
-                >
-                  <span>Español</span>
-                  {isPlayingAudio === 'es' ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
               </div>
             </div>

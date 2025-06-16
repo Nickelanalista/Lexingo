@@ -9,6 +9,7 @@ import MobileNavigation from './components/MobileNavigation';
 import ReaderComponent from './components/Reader';
 import LandingPage from './components/LandingPage';
 import HomePage from './components/HomePage';
+import ModernHomePage from './components/ModernHomePage';
 import BooksPage from './pages/BooksPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
@@ -29,7 +30,7 @@ const AppContent = () => {
       
       <main className="flex-1 overflow-y-auto">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<ModernHomePage />} />
           <Route path="/books" element={<BooksPage />} />
           <Route path="/reader" element={<ReaderComponent onFullScreenChange={setIsFullScreen} />} />
           <Route path="/profile" element={<ProfilePage />} />
