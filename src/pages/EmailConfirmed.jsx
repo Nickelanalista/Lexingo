@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+
+// Bandera global para prevenir múltiples confirmaciones
+let emailConfirmationInProgress = false;
+let emailConfirmationCompleted = false;
 
 // ============== COMPONENTE PRINCIPAL ==============
 export default function EmailConfirmed() {
@@ -9,27 +13,19 @@ export default function EmailConfirmed() {
   const [errorMessage, setErrorMessage] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [userEmail, setUserEmail] = useState('');
+  const hasRun = useRef(false);
 
   useEffect(() => {
-    console.log('🔍 EmailConfirmed component mounted');
-    console.log('🔍 Current URL:', window.location.href);
-    console.log('🔍 Search params:', Object.fromEntries(searchParams.entries()));
+    // Solo ejecutar una vez, incluso con StrictMode
+    if (hasRun.current || emailConfirmationInProgress || emailConfirmationCompleted) {
+      return;
+    }
     
-    // Evitar múltiples ejecuciones
-    let isCancelled = false;
+    hasRun.current = true;
+    emailConfirmationInProgress = true;
     
-    const runConfirmation = async () => {
-      if (!isCancelled) {
-        await confirmEmail();
-      }
-    };
-    
-    runConfirmation();
-    
-    return () => {
-      isCancelled = true;
-    };
-  }, [searchParams]);
+    confirmEmail();
+  }, []);
 
   const confirmEmail = async () => {
     try {
@@ -65,20 +61,23 @@ export default function EmailConfirmed() {
 
       console.log('✅ Email confirmado exitosamente:', data);
       setUserEmail(data.user?.email || '');
+      emailConfirmationCompleted = true;
+      emailConfirmationInProgress = false;
       
       // Cerrar sesión en la web app (solo queremos que esté logueado en la app móvil)
       await supabase.auth.signOut();
-      console.log('🚪 Sesión cerrada en web app');
+      console.log('🚪 Sesión cerrada en web app - Usuario NO queda logueado aquí');
       
       setStatus('success');
 
-      // Iniciar countdown para redirect automático
+      // Iniciar countdown para redirect automático a la app
       startCountdown();
 
     } catch (error) {
       console.error('❌ Error inesperado:', error);
       setStatus('error');
       setErrorMessage('Ocurrió un error inesperado. Por favor, intenta nuevamente.');
+      emailConfirmationInProgress = false;
     }
   };
 
@@ -95,23 +94,20 @@ export default function EmailConfirmed() {
     }, 1000);
   };
 
-  const redirectToApp = () => {
-    // Intentar abrir la app con deep link
-    window.location.href = 'lexingo://auth/callback';
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
 
-    // Fallback: Si no se abre la app en 3 segundos, mostrar instrucciones
-    setTimeout(() => {
-      alert('Si la app no se abrió automáticamente, ábrela manualmente desde tu teléfono.');
-    }, 3000);
+  const redirectToApp = () => {
+    // Solo intentar deep link si es un dispositivo móvil
+    if (isMobileDevice()) {
+      window.location.href = 'lexingo://auth/callback';
+    }
+    // Si es web, no hacer nada (el usuario debe abrir la app manualmente)
   };
 
   return (
     <div style={styles.container}>
-      {/* Debug indicator - Remove this after testing */}
-      <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', padding: '10px', zIndex: 9999 }}>
-        EmailConfirmed Component Loaded ✅
-      </div>
-      
       <div style={styles.card}>
         {/* ESTADO: Verificando */}
         {status === 'verifying' && (
@@ -128,22 +124,33 @@ export default function EmailConfirmed() {
         {status === 'success' && (
           <>
             <div style={styles.icon}>✅</div>
-            <h1 style={styles.title}>¡Email confirmado!</h1>
+            <h1 style={styles.title}>¡Cuenta verificada!</h1>
             <p style={styles.subtitle}>
               {userEmail && `Tu cuenta (${userEmail}) ha sido verificada exitosamente.`}
               {!userEmail && 'Tu cuenta ha sido verificada exitosamente.'}
             </p>
-            <div style={styles.countdownContainer}>
-              <p style={styles.countdown}>
-                Redirigiendo a la app en <strong>{countdown}</strong> segundos...
-              </p>
-            </div>
-            <button onClick={redirectToApp} style={styles.button}>
-              Abrir Lexingo AI ahora
-            </button>
-            <p style={styles.hint}>
-              💡 Si la app no se abre automáticamente, haz clic en el botón de arriba
+            <p style={styles.subtitle}>
+              <strong>Ya puedes iniciar sesión en la app móvil de Lexingo.</strong>
             </p>
+            {isMobileDevice() && (
+              <>
+                <div style={styles.countdownContainer}>
+                  <p style={styles.countdown}>
+                    Intentando abrir la app en <strong>{countdown}</strong> segundos...
+                  </p>
+                </div>
+                <button onClick={redirectToApp} style={styles.button}>
+                  Abrir Lexingo AI ahora
+                </button>
+              </>
+            )}
+            {!isMobileDevice() && (
+              <div style={styles.instructionBox}>
+                <p style={styles.instructionText}>
+                  📱 <strong>Abre la app de Lexingo en tu móvil</strong> e inicia sesión con tu correo y contraseña.
+                </p>
+              </div>
+            )}
           </>
         )}
 
@@ -153,9 +160,16 @@ export default function EmailConfirmed() {
             <div style={styles.iconError}>❌</div>
             <h1 style={styles.title}>No se pudo verificar</h1>
             <p style={styles.subtitle}>{errorMessage}</p>
-            <button onClick={redirectToApp} style={styles.buttonSecondary}>
-              Volver a la app
-            </button>
+            {isMobileDevice() && (
+              <button onClick={redirectToApp} style={styles.buttonSecondary}>
+                Volver a la app
+              </button>
+            )}
+            {!isMobileDevice() && (
+              <p style={styles.subtitle}>
+                📱 Abre la app de Lexingo en tu móvil para solicitar un nuevo email de verificación.
+              </p>
+            )}
             <p style={styles.hint}>
               Si necesitas ayuda, contacta a soporte desde la app
             </p>
@@ -272,6 +286,20 @@ const styles = {
     color: '#9CA3AF',
     marginTop: '16px',
     lineHeight: '1.5',
+  },
+  instructionBox: {
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    borderRadius: '12px',
+    padding: '20px',
+    marginTop: '24px',
+    marginBottom: '16px',
+    border: '2px solid rgba(139, 92, 246, 0.3)',
+  },
+  instructionText: {
+    fontSize: '16px',
+    color: '#1F2937',
+    lineHeight: '1.6',
+    margin: 0,
   },
   footer: {
     marginTop: '32px',
