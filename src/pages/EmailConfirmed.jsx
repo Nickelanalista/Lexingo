@@ -1,10 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-
-// Bandera global para prevenir múltiples confirmaciones
-let emailConfirmationInProgress = false;
-let emailConfirmationCompleted = false;
 
 // ============== COMPONENTE PRINCIPAL ==============
 export default function EmailConfirmed() {
@@ -13,19 +9,45 @@ export default function EmailConfirmed() {
   const [errorMessage, setErrorMessage] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [userEmail, setUserEmail] = useState('');
-  const hasRun = useRef(false);
 
   useEffect(() => {
-    // Solo ejecutar una vez, incluso con StrictMode
-    if (hasRun.current || emailConfirmationInProgress || emailConfirmationCompleted) {
+    const token = searchParams.get('token');
+    
+    if (!token) {
+      setStatus('error');
+      setErrorMessage('No se encontró el token de confirmación en la URL.');
       return;
     }
+
+    // Verificar si este token ya fue procesado (usando sessionStorage)
+    const tokenKey = `email_confirmed_${token}`;
+    const alreadyProcessed = sessionStorage.getItem(tokenKey);
     
-    hasRun.current = true;
-    emailConfirmationInProgress = true;
+    console.log('🔍 Verificando token:', {
+      token: token.substring(0, 20) + '...',
+      alreadyProcessed: alreadyProcessed ? 'SÍ' : 'NO',
+      timestamp: new Date().toISOString()
+    });
+
+    if (alreadyProcessed) {
+      console.log('⚠️ Este token ya fue procesado, cargando resultado guardado...');
+      const savedResult = JSON.parse(alreadyProcessed);
+      setStatus(savedResult.status);
+      setUserEmail(savedResult.email || '');
+      setErrorMessage(savedResult.error || '');
+      
+      if (savedResult.status === 'success') {
+        startCountdown();
+      }
+      return;
+    }
+
+    // Marcar como "en proceso" para prevenir ejecuciones paralelas
+    sessionStorage.setItem(tokenKey, JSON.stringify({ status: 'processing' }));
     
+    console.log('✅ Primera ejecución de este token, procediendo con confirmación...');
     confirmEmail();
-  }, []);
+  }, [searchParams]);
 
   const confirmEmail = async () => {
     try {
@@ -50,19 +72,34 @@ export default function EmailConfirmed() {
 
       if (error) {
         console.error('❌ Error confirmando email:', error);
+        const errorMsg = error.message.includes('expired')
+          ? 'El enlace de confirmación ha expirado. Por favor, solicita un nuevo email de verificación desde la app.'
+          : 'No pudimos verificar tu email. Por favor, intenta nuevamente.';
+        
+        // Guardar error en sessionStorage
+        const tokenKey = `email_confirmed_${token}`;
+        sessionStorage.setItem(tokenKey, JSON.stringify({
+          status: 'error',
+          error: errorMsg,
+          timestamp: new Date().toISOString()
+        }));
+        
         setStatus('error');
-        setErrorMessage(
-          error.message.includes('expired')
-            ? 'El enlace de confirmación ha expirado. Por favor, solicita un nuevo email de verificación desde la app.'
-            : 'No pudimos verificar tu email. Por favor, intenta nuevamente.'
-        );
+        setErrorMessage(errorMsg);
         return;
       }
 
       console.log('✅ Email confirmado exitosamente:', data);
-      setUserEmail(data.user?.email || '');
-      emailConfirmationCompleted = true;
-      emailConfirmationInProgress = false;
+      const email = data.user?.email || '';
+      setUserEmail(email);
+      
+      // Guardar resultado en sessionStorage para prevenir reconfirmaciones
+      const tokenKey = `email_confirmed_${token}`;
+      sessionStorage.setItem(tokenKey, JSON.stringify({
+        status: 'success',
+        email: email,
+        timestamp: new Date().toISOString()
+      }));
       
       // Cerrar sesión en la web app (solo queremos que esté logueado en la app móvil)
       await supabase.auth.signOut();
@@ -75,9 +112,21 @@ export default function EmailConfirmed() {
 
     } catch (error) {
       console.error('❌ Error inesperado:', error);
+      const errorMsg = 'Ocurrió un error inesperado. Por favor, intenta nuevamente.';
+      
+      // Guardar error en sessionStorage
+      const token = searchParams.get('token');
+      if (token) {
+        const tokenKey = `email_confirmed_${token}`;
+        sessionStorage.setItem(tokenKey, JSON.stringify({
+          status: 'error',
+          error: errorMsg,
+          timestamp: new Date().toISOString()
+        }));
+      }
+      
       setStatus('error');
-      setErrorMessage('Ocurrió un error inesperado. Por favor, intenta nuevamente.');
-      emailConfirmationInProgress = false;
+      setErrorMessage(errorMsg);
     }
   };
 
