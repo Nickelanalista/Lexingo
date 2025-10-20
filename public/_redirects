@@ -1,0 +1,18 @@
+# Netlify redirects for Single Page Application
+# This ensures all routes are handled by React Router
+
+## Serve static EULA at /eula keeping URL
+/eula  /eula/index.html  200
+
+# Email confirmation page (IMPORTANT for user registration)
+/email-confirmed   /index.html   200
+
+/*    /index.html   200
+
+# Specific redirects for common paths (optional, but helpful)
+/reader   /index.html   200
+/books    /index.html   200
+/profile  /index.html   200
+/settings /index.html   200
+/upload   /index.html   200
+/terms    /index.html   200

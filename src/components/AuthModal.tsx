@@ -20,12 +20,14 @@ export default function AuthModal({ isOpen, onClose, defaultView = 'login' }: Au
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     setLoading(true);
 
     try {
@@ -38,7 +40,7 @@ export default function AuthModal({ isOpen, onClose, defaultView = 'login' }: Au
           throw new Error('Las contraseñas no coinciden');
         }
 
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -51,32 +53,53 @@ export default function AuthModal({ isOpen, onClose, defaultView = 'login' }: Au
 
         if (signUpError) throw signUpError;
 
-        // Create profile after successful signup
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
+        // Verificar si el email necesita confirmación
+        if (data?.user && !data.user.confirmed_at) {
+          setSuccessMessage('✅ Cuenta creada. Por favor revisa tu email para confirmar tu cuenta.');
+          // Limpiar el formulario
+          setEmail('');
+          setPassword('');
+          setConfirmPassword('');
+          setName('');
+          setAcceptedTerms(false);
+          return; // No cerrar el modal para que vea el mensaje
+        }
+
+        // Si el email está confirmado automáticamente, crear el perfil
+        if (data?.user) {
           const { error: profileError } = await supabase
             .from('profiles')
             .insert([
               {
-                id: user.id,
+                id: data.user.id,
                 email: email,
                 name: name,
               }
             ]);
 
-          if (profileError) throw profileError;
+          if (profileError && !profileError.message.includes('duplicate')) {
+            throw profileError;
+          }
         }
+
+        onClose();
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (error) throw error;
-      }
+        if (error) {
+          // Mensaje personalizado si el email no está confirmado
+          if (error.message.includes('Email not confirmed')) {
+            throw new Error('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.');
+          }
+          throw error;
+        }
 
-      onClose();
-    } catch (err) {
+        onClose();
+      }
+    } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
@@ -199,8 +222,14 @@ export default function AuthModal({ isOpen, onClose, defaultView = 'login' }: Au
             )}
 
             {error && (
-              <div className="text-sm text-red-400 bg-red-900/30 p-2 rounded">
+              <div className="text-sm text-red-400 bg-red-900/30 p-3 rounded-md border border-red-800">
                 {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="text-sm text-green-400 bg-green-900/30 p-3 rounded-md border border-green-800">
+                {successMessage}
               </div>
             )}
 
