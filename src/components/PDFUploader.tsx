@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileText, Upload, ImageIcon, Loader2 } from 'lucide-react';
+import { FileText, Upload, ImageIcon, Loader2, X } from 'lucide-react';
 import { useFileProcessor } from '../hooks/useFileProcessor';
 import { useBookContext } from '../context/BookContext';
 import { useNavigate } from 'react-router-dom';
+import MinimalLoadingIndicator from './MinimalLoadingIndicator';
 
 interface PDFUploaderProps {
   onFileProcessed: () => void;
@@ -21,7 +22,7 @@ const SUPPORTED_FORMATS = {
 };
 
 const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
-  const { processFile, error, isProcessingBackground } = useFileProcessor();
+  const { processFile, error } = useFileProcessor();
   const { isLoading, book } = useBookContext();
   const navigate = useNavigate();
   const [processingFile, setProcessingFile] = useState(false);
@@ -78,10 +79,11 @@ const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
         <div className="mb-2">
           {isLoading || processingFile ? (
             <div className="flex flex-col items-center">
-              <Loader2 className="animate-spin w-8 h-8 text-blue-500 mb-2" />
-              <span className="text-sm text-blue-600 dark:text-blue-300">
-                {processingFile ? 'Procesando archivo...' : 'Cargando...'}
-              </span>
+              <MinimalLoadingIndicator 
+                message={processingFile ? 'Procesando' : 'Cargando'} 
+                size="small" 
+                showMessage={false} 
+              />
             </div>
           ) : (
             isDragReject ? (
@@ -97,7 +99,7 @@ const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
         </div>
         
         <h3 className="text-sm font-medium mb-1 dark:text-white">
-          {isLoading || processingFile ? 'Procesando archivo...' : 'Sube tu libro'}
+          {isLoading || processingFile ? 'Procesando...' : 'Sube tu libro'}
         </h3>
         
         <p className="mb-2 text-xs text-gray-600 dark:text-gray-300">
@@ -108,10 +110,19 @@ const FileUploader: React.FC<PDFUploaderProps> = ({ onFileProcessed }) => {
               : `Arrastra y suelta un archivo (${supportedFormatsText}), o haz clic`}
         </p>
         
-        {/* Actualizar el indicador de OCR para PDFs escaneados */}
-        <div className="flex items-center justify-center mt-1 mb-2 text-xs text-purple-600 dark:text-purple-400">
-          <ImageIcon size={14} className="mr-1" />
-          <span>Compatible con PDFs escaneados (OCR local con Tesseract.js)</span>
+        {/* Información sobre tipos de archivo */}
+        <div className="flex flex-col items-center justify-center mt-2 mb-2 text-xs">
+          <div className="flex items-center text-green-600 dark:text-green-400 mb-1">
+            <FileText size={14} className="mr-1" />
+            <span>🚀 PRIORIDAD: Extracción directa de texto (instantánea)</span>
+          </div>
+          <div className="flex items-center text-blue-600 dark:text-blue-400 mb-1">
+            <span>📖 PDFs con texto nativo: Lectura inmediata</span>
+          </div>
+          <div className="flex items-center text-purple-600 dark:text-purple-400">
+            <ImageIcon size={14} className="mr-1" />
+            <span>🖼️ PDFs escaneados: OCR solo si es necesario</span>
+          </div>
         </div>
         
         {error && (

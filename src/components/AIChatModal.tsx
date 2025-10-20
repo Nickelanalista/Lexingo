@@ -89,33 +89,59 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
       if (!isLoading && !isRecording && !isTranscribing && inputRef.current) {
         inputRef.current.focus();
       }
-      if (initialText && !initialGreetingSentRef.current) {
+      
+      if (!initialGreetingSentRef.current) {
         initialGreetingSentRef.current = true;
         setIsLoading(true);
         setIsUserTextExpanded(false); // Resetear al abrir el modal
 
-        const systemMessage: Message = {
-          role: 'system',
-          content: "Eres Lexi, un asistente de IA amigable y experto en idiomas integrado en la aplicación de lectura Lexingo. Tu objetivo es ayudar a los usuarios a comprender mejor los textos que están leyendo. El usuario te proporcionará un fragmento de texto.\nDebes iniciar la conversación saludando amablemente.\nLuego, PRESENTA CLARAMENTE el texto que el usuario compartió envolviéndolo EXACTAMENTE así: [USER_TEXT_START]el texto del usuario aquí[USER_TEXT_END]. No añadas ningún otro carácter o formato alrededor de estas etiquetas especiales.\nDespués de presentar el texto, DEBES continuar tu mensaje EXACTAMENTE con el siguiente formato y texto para las sugerencias (puedes ajustar la referencia a \'este fragmento\' si es natural, pero mantén la estructura de la lista numerada):\n\n'¿En qué puedo ayudarte con este fragmento? Por ejemplo, puedo:\n1. Analizar la gramática.\n2. Explicar frases complejas.\n3. Dar sinónimos de palabras clave.\n4. Profundizar en el significado de alguna parte.\n\n¡Dime qué te interesa explorar o simplemente indica el número de la opción!\'\n\nMantén un tono conversacional, servicial y alentador en tu saludo inicial y en la frase final. Genera toda esta respuesta inicial en una sola burbuja de chat."
-        };
-        const initialUserMessageForAI: Message = {
-          role: 'user',
-          content: `El usuario ha seleccionado el siguiente texto para discutir: [USER_TEXT_START]${initialText}[USER_TEXT_END]. Por favor, inicia la conversación según tus instrucciones.`
-        };
-        
-        setConversation([systemMessage]); 
-
-        OpenAIService.getAIChatResponse([systemMessage, initialUserMessageForAI])
-          .then(responseContent => {
-            setConversation(prevConv => [...prevConv, { role: 'assistant', content: responseContent }]);
-          })
-          .catch(error => {
-            console.error("Error fetching initial AI response:", error);
-            setConversation(prevConv => [...prevConv, { role: 'assistant', content: '¡Hola! Parece que hay un problema para conectar con mi inteligencia. Por favor, intenta más tarde.' }]);
-          })
-          .finally(() => {
-            setIsLoading(false);
-          });
+        if (initialText) {
+          // Caso con texto seleccionado (como antes)
+          const systemMessage: Message = {
+            role: 'system',
+            content: "Eres Lexi, un asistente de IA amigable y experto en idiomas integrado en la aplicación de lectura Lexingo. Tu objetivo es ayudar a los usuarios a comprender mejor los textos que están leyendo. El usuario te proporcionará un fragmento de texto.\nDebes iniciar la conversación saludando amablemente.\nLuego, PRESENTA CLARAMENTE el texto que el usuario compartió envolviéndolo EXACTAMENTE así: [USER_TEXT_START]el texto del usuario aquí[USER_TEXT_END]. No añadas ningún otro carácter o formato alrededor de estas etiquetas especiales.\nDespués de presentar el texto, DEBES continuar tu mensaje EXACTAMENTE con el siguiente formato y texto para las sugerencias (puedes ajustar la referencia a \'este fragmento\' si es natural, pero mantén la estructura de la lista numerada):\n\n'¿En qué puedo ayudarte con este fragmento? Por ejemplo, puedo:\n1. Analizar la gramática.\n2. Explicar frases complejas.\n3. Dar sinónimos de palabras clave.\n4. Profundizar en el significado de alguna parte.\n\n¡Dime qué te interesa explorar o simplemente indica el número de la opción!\'\n\nMantén un tono conversacional, servicial y alentador en tu saludo inicial y en la frase final. Genera toda esta respuesta inicial en una sola burbuja de chat."
+          };
+          const initialUserMessageForAI: Message = {
+            role: 'user',
+            content: `El usuario ha seleccionado el siguiente texto para discutir: [USER_TEXT_START]${initialText}[USER_TEXT_END]. Por favor, inicia la conversación según tus instrucciones.`
+          };
+          
+          setConversation([systemMessage]); 
+          OpenAIService.getAIChatResponse([systemMessage, initialUserMessageForAI])
+            .then(responseContent => {
+              setConversation(prevConv => [...prevConv, { role: 'assistant', content: responseContent }]);
+            })
+            .catch(error => {
+              console.error("Error fetching initial AI response:", error);
+              setConversation(prevConv => [...prevConv, { role: 'assistant', content: '¡Hola! Parece que hay un problema para conectar con mi inteligencia. Por favor, intenta más tarde.' }]);
+            })
+            .finally(() => {
+              setIsLoading(false);
+            });
+        } else {
+          // Caso SIN texto seleccionado (chat general)
+          const systemMessage: Message = {
+            role: 'system',
+            content: "Eres Lexi, un asistente de IA amigable y experto en idiomas integrado en la aplicación de lectura Lexingo. El usuario está en modo de lectura pero no ha seleccionado ningún texto específico. Tu objetivo es ofrecer ayuda general sobre lectura, comprensión de idiomas y gramática.\nDebes iniciar la conversación con un saludo amigable y ofrecer ayuda general sobre lectura y gramática."
+          };
+          const initialUserMessageForAI: Message = {
+            role: 'user',
+            content: "El usuario ha abierto el chat general sin seleccionar texto específico. Salúdalo y ofrece ayuda con gramática, comprensión de lectura o cualquier duda que tenga."
+          };
+          
+          setConversation([systemMessage]); 
+          OpenAIService.getAIChatResponse([systemMessage, initialUserMessageForAI])
+            .then(responseContent => {
+              setConversation(prevConv => [...prevConv, { role: 'assistant', content: responseContent }]);
+            })
+            .catch(error => {
+              console.error("Error fetching initial AI response:", error);
+              setConversation(prevConv => [...prevConv, { role: 'assistant', content: '¡Hola! Parece que hay un problema para conectar con mi inteligencia. Por favor, intenta más tarde.' }]);
+            })
+            .finally(() => {
+              setIsLoading(false);
+            });
+        }
       }
     } else if (!isOpen) {
       setConversation([]);
@@ -319,7 +345,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
 
   return (
     <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[20000] p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[20000] p-1 sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -327,10 +353,10 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
       }}
     >
       <div 
-        className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-2xl min-h-[60vh] max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden border border-gray-700"
+        className="bg-gray-800 text-white rounded-lg shadow-2xl w-full max-w-sm sm:max-w-lg md:max-w-2xl min-h-[60vh] max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden border border-gray-700"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-700 bg-gray-850 flex-shrink-0">
+        <div className="flex items-center justify-between p-2 sm:p-4 border-b border-gray-700 bg-gray-850 flex-shrink-0">
           <div className="flex items-center min-w-0">
             <img src="/img/icono_lexingo.png" alt="Lexingo AI" className="w-8 h-8 rounded-full mr-3 border-2 border-teal-400 flex-shrink-0"/> 
             <div className="min-w-0">
@@ -347,7 +373,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
           </button>
         </div>
 
-        <div ref={chatContentRef} className="flex-grow p-3 sm:p-4 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 min-h-0">
+        <div ref={chatContentRef} className="flex-grow p-2 sm:p-4 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 min-h-0">
           {conversation.filter(msg => msg.role !== 'system').map((msg, index) => {
             const isAssistant = msg.role === 'assistant';
             let messageParts: React.ReactNode[] = [];
@@ -446,7 +472,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, initialText 
           )}
         </div>
 
-        <div className="p-3 sm:p-4 border-t border-gray-700 bg-gray-850">
+        <div className="p-2 sm:p-4 border-t border-gray-700 bg-gray-850">
           <div className="flex items-center bg-gray-700 rounded-lg p-1.5 pr-2.5 relative">
             {/* Área de Input o Indicador de Estado */} 
             <div className="flex-grow flex items-center justify-center min-h-[40px]"> {/* Asegura altura mínima */} 

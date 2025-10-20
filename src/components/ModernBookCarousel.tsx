@@ -12,6 +12,7 @@ interface Book {
   totalPages?: number;
   rating?: number;
   isRecent?: boolean;
+  showOptionsMenu?: boolean;
 }
 
 interface ModernBookCarouselProps {
@@ -21,6 +22,8 @@ interface ModernBookCarouselProps {
   onBookClick: (book: Book) => void;
   className?: string;
   showProgress?: boolean;
+  onEditTitle?: (bookId: string) => void;
+  onDelete?: (bookId: string) => void;
 }
 
 export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
@@ -29,7 +32,9 @@ export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
   books,
   onBookClick,
   className = '',
-  showProgress = false
+  showProgress = false,
+  onEditTitle,
+  onDelete
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
@@ -90,11 +95,11 @@ export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
       {/* Header compacto con navegación */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+          <h2 className="text-lg font-semibold text-white drop-shadow-lg mb-1">
             {title}
           </h2>
           {subtitle && (
-            <p className="text-xs text-gray-600 dark:text-gray-400">{subtitle}</p>
+            <p className="text-sm text-purple-200/80">{subtitle}</p>
           )}
         </div>
         
@@ -105,8 +110,8 @@ export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
             disabled={!canScrollPrev}
             className={`p-1.5 rounded-lg transition-all duration-200 ${
               canScrollPrev
-                ? 'bg-white dark:bg-gray-800 shadow-sm hover:shadow-md hover:scale-105 text-gray-700 dark:text-gray-300'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                ? 'bg-white/20 backdrop-blur-sm border border-white/30 shadow-sm hover:shadow-md hover:scale-105 text-white hover:bg-white/30'
+                : 'bg-white/10 backdrop-blur-sm border border-white/20 text-white/50 cursor-not-allowed'
             }`}
           >
             <ChevronLeft className="w-3 h-3" />
@@ -116,8 +121,8 @@ export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
             disabled={!canScrollNext}
             className={`p-1.5 rounded-lg transition-all duration-200 ${
               canScrollNext
-                ? 'bg-white dark:bg-gray-800 shadow-sm hover:shadow-md hover:scale-105 text-gray-700 dark:text-gray-300'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                ? 'bg-white/20 backdrop-blur-sm border border-white/30 shadow-sm hover:shadow-md hover:scale-105 text-white hover:bg-white/30'
+                : 'bg-white/10 backdrop-blur-sm border border-white/20 text-white/50 cursor-not-allowed'
             }`}
           >
             <ChevronRight className="w-3 h-3" />
@@ -149,25 +154,13 @@ export const ModernBookCarousel: React.FC<ModernBookCarouselProps> = ({
             isRecent={book.isRecent}
             onClick={() => onBookClick(book)}
             className="flex-shrink-0 w-28 sm:w-32 md:w-36"
+            showOptionsMenu={book.showOptionsMenu}
+            onEditTitle={() => onEditTitle?.(book.id)}
+            onDelete={() => onDelete?.(book.id)}
           />
         ))}
       </div>
 
-      {/* Indicador de scroll para móvil */}
-      <div className="flex justify-center mt-4 md:hidden">
-        <div className="flex space-x-1">
-          {Array.from({ length: Math.ceil(books.length / 2) }).map((_, index) => (
-            <div
-              key={index}
-              className={`h-1 w-6 rounded-full transition-colors duration-200 ${
-                index === Math.floor(currentIndex / 2)
-                  ? 'bg-blue-500'
-                  : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

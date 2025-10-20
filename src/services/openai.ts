@@ -1,5 +1,21 @@
 import axios from 'axios';
 import { OpenAIResponse } from '../types';
+import { supabase } from '../lib/supabase';
+
+// New OpenAI Responses API interface
+interface OpenAIResponsesAPIResponse {
+  output_text: string;
+  output: Array<{
+    id: string;
+    type: string;
+    role: string;
+    content: Array<{
+      type: string;
+      text: string;
+      annotations: any[];
+    }>;
+  }>;
+}
 
 // Definición de la interfaz Message (idealmente estaría en src/types)
 interface Message {
@@ -386,7 +402,7 @@ export const OpenAIService = {
       const response = await axios.post<OpenAIResponse>(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: 'gpt-4.1-nano', // Considerar gpt-4o para mayor calidad si el presupuesto lo permite
+          model: 'gpt-4.1-nano', // Usar modelo disponible
           messages: [
             {
               role: 'system',
@@ -415,10 +431,26 @@ export const OpenAIService = {
     }
   },
 
-  // Restaurar la función translateTextToLanguage
+  // Función mejorada que usa Supabase Edge Functions en producción y llamadas directas en desarrollo
   async translateTextToLanguage(text: string, targetLanguageCode: string, sourceLanguageCode: string = 'en'): Promise<string> {
+    const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+    
+    if (isDevelopment) {
+      return this.translateTextToLanguageDirect(text, targetLanguageCode, sourceLanguageCode);
+    } else {
+      return this.translateTextToLanguageNetlify(text, targetLanguageCode, sourceLanguageCode);
+    }
+  },
+
+  // Traducción directa para desarrollo
+  async translateTextToLanguageDirect(text: string, targetLanguageCode: string, sourceLanguageCode: string = 'en'): Promise<string> {
     try {
       const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      console.log('[DEBUG] Using direct OpenAI call (development)');
+      console.log('[DEBUG] API Key present:', !!apiKey);
+      console.log('[DEBUG] API Key length:', apiKey?.length);
+      console.log('[DEBUG] API Key starts with sk-:', apiKey?.startsWith('sk-'));
+      console.log('[DEBUG] API Key full (first 20):', apiKey?.substring(0, 20));
       if (!apiKey) {
         throw new Error('La clave API de OpenAI no está configurada');
       }
@@ -426,10 +458,13 @@ export const OpenAIService = {
       const sourceLanguageName = getLanguageName(sourceLanguageCode);
       const targetLanguageName = getLanguageName(targetLanguageCode);
 
+      const model = 'gpt-4.1-nano'; // Modelo rápido y económico
+      console.log('[DEBUG] Using model:', model);
+      
       const response = await axios.post<OpenAIResponse>(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: 'gpt-4.1-nano', 
+          model, 
           messages: [
             {
               role: 'system',
@@ -441,7 +476,7 @@ export const OpenAIService = {
             }
           ],
           temperature: 0.5, 
-          max_tokens: 3000 // Ajustado para páginas más largas
+          max_tokens: 3000
         },
         {
           headers: {
@@ -457,36 +492,82 @@ export const OpenAIService = {
     }
   },
 
+  // Traducción usando Supabase Edge Function (mantiene nombre para compatibilidad)
+  async translateTextToLanguageNetlify(text: string, targetLanguageCode: string, sourceLanguageCode: string = 'en'): Promise<string> {
+    try {
+      console.log('[DEBUG] Using Supabase Edge Function translate-paragraph (production)');
+      const { data, error } = await supabase.functions.invoke('translate-paragraph', {
+        body: {
+          text,
+          sourceLanguageCode,
+          targetLanguageCode,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Supabase translate-paragraph error');
+      }
+
+      return (data as any)?.result || '';
+    } catch (error) {
+      console.error(`Error al traducir texto con Supabase de ${sourceLanguageCode} a ${targetLanguageCode}:`, error);
+      throw error;
+    }
+  },
+
   // Aquí deberían ir también getAIChatResponse y transcribeAudio si se quieren restaurar completamente,
   // pero para el error actual, solo translateTextToLanguage es crucial.
 
   async getAIChatResponse(messages: Message[]): Promise<string> {
-    try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error('La clave API de OpenAI no está configurada');
-      }
-
-      const response = await axios.post<OpenAIResponse>(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: 'gpt-4.1-nano', // Consistente con otros usos
-          messages: messages,
-          temperature: 0.7, // Temperatura estándar para chat
-          max_tokens: 1000 // Permitir respuestas más largas para chat
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          }
+    const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+    if (isDevelopment) {
+      try {
+        const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error('La clave API de OpenAI no está configurada');
         }
-      );
-      
-      return response.data.choices[0]?.message?.content?.trim() || '';
-    } catch (error) {
-      console.error('Error al llamar a la API de OpenAI para chat:', error);
-      throw error;
+        const response = await axios.post<OpenAIResponse>(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4.1-nano',
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            }
+          }
+        );
+        return response.data.choices[0]?.message?.content?.trim() || '';
+      } catch (error) {
+        console.error('Error al llamar a OpenAI (dev):', error);
+        throw error;
+      }
+    } else {
+      try {
+        console.log('[DEBUG] Using Supabase Edge Function ai-chat (production)');
+        // Extraer último mensaje del usuario y construir history (excluyendo system)
+        const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+        const history = messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({ role: m.role, content: m.content }));
+
+        const { data, error } = await supabase.functions.invoke('ai-chat', {
+          body: {
+            message: lastUser,
+            history,
+            language: 'es',
+          },
+        });
+        if (error) throw new Error(error.message || 'Supabase ai-chat error');
+        return (data as any)?.result || '';
+      } catch (error) {
+        console.error('Error al llamar a ai-chat (prod):', error);
+        throw error;
+      }
     }
   },
 };

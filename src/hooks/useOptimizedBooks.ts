@@ -32,19 +32,158 @@ interface BookCache {
   type: 'user' | 'community';
 }
 
+// Versión optimizada para localStorage que excluye el contenido completo
+interface OptimizedBookCache {
+  books: (Omit<UserBook, 'content'> | Omit<CommunityBook, 'content'>)[];
+  timestamp: number;
+  type: 'user' | 'community';
+}
+
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutos - cache más duradero
 const LOCAL_STORAGE_KEY = 'lexingo_books_cache';
+const MAX_STORAGE_SIZE = 2000000; // 2MB límite más conservador
+const MAX_CACHED_BOOKS = 20; // Reducir número de libros en caché
 const bookCache = new Map<string, BookCache>();
+
+// Función para calcular el tamaño aproximado de un objeto JSON
+const getObjectSize = (obj: any): number => {
+  return new Blob([JSON.stringify(obj)]).size;
+};
+
+// Función de limpieza de emergencia para corregir problemas de quota existentes
+const emergencyCleanup = () => {
+  try {
+    const storageData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!storageData) return;
+    
+    const currentSize = new Blob([storageData]).size;
+    
+    if (currentSize > MAX_STORAGE_SIZE) {
+      cleanupLocalStorage();
+    }
+  } catch (error) {
+    console.warn('[useOptimizedBooks] Error en limpieza de emergencia, eliminando caché completo:', error);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  }
+};
+
+// Función para limpiar localStorage de forma segura
+const cleanupLocalStorage = () => {
+  try {
+    const storageData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (storageData) {
+      const parsedData = JSON.parse(storageData);
+      const keys = Object.keys(parsedData);
+      
+      // Mantener solo los más recientes según el límite
+      const sortedKeys = keys.sort((a, b) => {
+        const dateA = parsedData[a]?.timestamp || 0;
+        const dateB = parsedData[b]?.timestamp || 0;
+        return dateB - dateA; // Más recientes primero
+      });
+      
+      const cleanedData: any = {};
+      const keysToKeep = Math.min(MAX_CACHED_BOOKS / 2, sortedKeys.length); // Mantener solo la mitad
+      for (let i = 0; i < keysToKeep; i++) {
+        cleanedData[sortedKeys[i]] = parsedData[sortedKeys[i]];
+      }
+      
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleanedData));
+    }
+  } catch (error) {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  }
+};
 
 // Funciones para persistencia en localStorage
 const saveToLocalStorage = (key: string, data: BookCache) => {
   try {
+    // Limpiar localStorage proactivamente si está cerca del límite
+    try {
+      const currentSize = new Blob([localStorage.getItem(LOCAL_STORAGE_KEY) || '{}']).size;
+      if (currentSize > MAX_STORAGE_SIZE * 0.8) { // Si está al 80% del límite
+        cleanupLocalStorage();
+      }
+    } catch (cleanupError) {
+      console.warn('[useOptimizedBooks] Error en limpieza proactiva:', cleanupError);
+    }
+
     const storageData = localStorage.getItem(LOCAL_STORAGE_KEY) || '{}';
     const parsedData = JSON.parse(storageData);
-    parsedData[key] = data;
+    
+    // Limpiar datos antiguos si hay demasiados
+    const keys = Object.keys(parsedData);
+    if (keys.length > MAX_CACHED_BOOKS) { // Limitar número de libros en caché
+      const sortedKeys = keys.sort((a, b) => {
+        const dateA = parsedData[a]?.timestamp || 0;
+        const dateB = parsedData[b]?.timestamp || 0;
+        return dateA - dateB; // Más antiguos primero
+      });
+      
+      // Eliminar hasta llegar al límite máximo
+      const toRemove = keys.length - MAX_CACHED_BOOKS;
+      for (let i = 0; i < toRemove; i++) {
+        delete parsedData[sortedKeys[i]];
+      }
+    }
+    
+    // Crear versión optimizada sin contenido completo para ahorrar espacio
+    const optimizedData: OptimizedBookCache = {
+      books: data.books.map(book => {
+        const { content, ...bookWithoutContent } = book as any;
+        return bookWithoutContent;
+      }),
+      timestamp: data.timestamp,
+      type: data.type
+    };
+    
+    parsedData[key] = optimizedData;
+    const jsonString = JSON.stringify(parsedData);
+    
+    // Verificar tamaño antes de guardar - usar límite más conservador
+    if (getObjectSize(parsedData) > MAX_STORAGE_SIZE) { // Límite más conservador
+      // Si es demasiado grande, limpiar más agresivamente
+      const remainingKeys = Object.keys(parsedData);
+      const halfToRemove = Math.floor(remainingKeys.length / 2);
+      
+      const sortedKeys = remainingKeys.sort((a, b) => {
+        const dateA = parsedData[a]?.timestamp || 0;
+        const dateB = parsedData[b]?.timestamp || 0;
+        return dateA - dateB;
+      });
+      
+      for (let i = 0; i < halfToRemove; i++) {
+        delete parsedData[sortedKeys[i]];
+      }
+      
+      // Intentar de nuevo con la versión optimizada
+      parsedData[key] = optimizedData;
+    }
+    
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsedData));
   } catch (error) {
-    console.error('Error saving to localStorage:', error);
+    if (error.name === 'QuotaExceededError') {
+      console.warn('localStorage lleno, limpiando caché...');
+      // Limpiar todo el caché y intentar solo con el elemento actual
+      try {
+        // Usar versión optimizada incluso para fallback
+        const fallbackData = {
+          books: data.books.map(book => {
+            const { content, ...bookWithoutContent } = book as any;
+            return bookWithoutContent;
+          }),
+          timestamp: data.timestamp,
+          type: data.type
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ [key]: fallbackData }));
+      } catch (secondError) {
+        console.error('No se pudo guardar en localStorage ni después de limpiar:', secondError);
+        // Como último recurso, limpiar completamente
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+      }
+    } else {
+      console.error('Error saving to localStorage:', error);
+    }
   }
 };
 
@@ -224,7 +363,13 @@ export const useOptimizedBooks = () => {
   // Función para obtener libros recientes con progreso
   const getRecentBooks = useMemo(() => {
     return userBooks
-      .filter(book => book.current_page > 0)
+      .filter(book => {
+        // Solo incluir libros con progreso y contenido válido
+        return book.current_page > 0 && 
+               book.content && 
+               book.content !== '[]' &&
+               book.total_pages > 0;
+      })
       .sort((a, b) => new Date(b.last_read).getTime() - new Date(a.last_read).getTime())
       .slice(0, 10)
       .map(book => ({
@@ -236,7 +381,12 @@ export const useOptimizedBooks = () => {
 
   // Función para obtener libros marcados
   const getBookmarkedBooks = useMemo(() => {
-    return userBooks.filter(book => book.bookmarked);
+    return userBooks.filter(book => {
+      return book.bookmarked && 
+             book.content && 
+             book.content !== '[]' &&
+             book.total_pages > 0;
+    });
   }, [userBooks]);
 
   // Función para limpiar cache (memoria y localStorage)
@@ -269,6 +419,15 @@ export const useOptimizedBooks = () => {
 
   // Cargar datos iniciales
   useEffect(() => {
+    // Ejecutar limpieza de emergencia al cargar
+    emergencyCleanup();
+    
+    // Limpiar caché si tenemos libros con contenido vacío
+    const hasCachedBooks = bookCache.size > 0;
+    if (hasCachedBooks) {
+      clearCache();
+    }
+    
     const loadInitialData = async () => {
       setLoading(true);
       setError(null);

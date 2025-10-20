@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+      "supabase_lexingo": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-postgres",
+          "postgresql://postgres.ihtftybjyoknsqbroikx:Milo1595!!..@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+        ],
+        "env": {
+          "SUPABASE_ACCESS_TOKEN": "sbp_2a07ef3d57b321699b955ee3350b0c9c49518df8"
+        }
+      }
+    }
+  }

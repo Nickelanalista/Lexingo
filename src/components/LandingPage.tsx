@@ -949,6 +949,19 @@ export default function LandingPage() {
         onClose={() => setIsAuthModalOpen(false)}
         defaultView={authModalView}
       />
+      {/* Footer legal links for public access */}
+      <footer className="border-t border-gray-800 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-sm text-gray-400">
+          <div className="mb-3 sm:mb-0">© {new Date().getFullYear()} Lexingo AI</div>
+          <div className="flex items-center gap-4">
+            <a href="/privacy" className="hover:text-white transition-colors">Política de Privacidad</a>
+            <span className="opacity-30">•</span>
+            <a href="/term" className="hover:text-white transition-colors">Términos y Condiciones</a>
+            <span className="opacity-30">•</span>
+            <a href="/support" className="hover:text-white transition-colors">Soporte</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

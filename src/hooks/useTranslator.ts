@@ -5,6 +5,14 @@ import { OpenAIService } from '../services/openai';
 export const useTranslator = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados para progreso de traducción masiva
+  const [isTranslatingBulk, setIsTranslatingBulk] = useState(false);
+  const [translationProgress, setTranslationProgress] = useState(0);
+  const [translationTotal, setTranslationTotal] = useState(0);
+  const [isCancellingTranslation, setIsCancellingTranslation] = useState(false);
+  const [currentFromLanguage, setCurrentFromLanguage] = useState('');
+  const [currentToLanguage, setCurrentToLanguage] = useState('');
 
   const translateWord = useCallback(async (word: string, sourceLanguageCode: string, targetLanguageCode: string): Promise<TranslationResult | null> => {
     if (!word.trim()) return null;
@@ -18,37 +26,12 @@ export const useTranslator = () => {
     setError(null);
 
     try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      
-      if (!apiKey) {
-        throw new Error('OpenAI API key is missing. Please add VITE_OPENAI_API_KEY to your .env file.');
-      }
-      
-      const translationResponse = await OpenAIService.translateWord(word, sourceLanguageCode, targetLanguageCode);
-      
-      // Verificar si el resultado es JSON (contiene información de idioma detectado)
-      let translatedText = '';
-      let detectedLanguage = undefined;
-      
-      try {
-        // Intentar parsear como JSON
-        const parsedResponse = JSON.parse(translationResponse);
-        if (parsedResponse && typeof parsedResponse === 'object') {
-          translatedText = parsedResponse.text || '';
-          detectedLanguage = parsedResponse.detectedSourceLanguage;
-        }
-      } catch (e) {
-        // Si no es JSON, es solo texto traducido
-        translatedText = translationResponse;
-      }
-      
+      const translatedText = await OpenAIService.translateTextToLanguage(word, targetLanguageCode, sourceLanguageCode);
       const result: TranslationResult = {
         original: word,
         translated: translatedText,
         timestamp: Date.now(),
-        detectedSourceLanguage: detectedLanguage
       };
-      
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al traducir la palabra';
@@ -68,14 +51,7 @@ export const useTranslator = () => {
     setError(null);
 
     try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      
-      if (!apiKey) {
-        throw new Error('OpenAI API key is missing. Please add VITE_OPENAI_API_KEY to your .env file.');
-      }
-      
-      const translatedText = await OpenAIService.translateParagraph(text, sourceLanguageCode, targetLanguageCode);
-      
+      const translatedText = await OpenAIService.translateTextToLanguage(text, targetLanguageCode, sourceLanguageCode);
       const result: TranslationResult = {
         original: text,
         translated: translatedText,
@@ -178,12 +154,115 @@ export const useTranslator = () => {
     });
   }, []);
 
+  // Nueva función para traducir múltiples páginas con progreso
+  const translateBookPages = useCallback(async (
+    pages: Array<{ pageNumber: number; content: string }>,
+    targetLanguageCode: string, 
+    sourceLanguageCode: string = 'en',
+    onProgress?: (progress: number, total: number) => void
+  ): Promise<Array<{ pageNumber: number; content: string; translated: string }>> => {
+    setIsTranslatingBulk(true);
+    setIsCancellingTranslation(false);
+    setTranslationProgress(0);
+    setTranslationTotal(pages.length);
+    setCurrentFromLanguage(sourceLanguageCode);
+    setCurrentToLanguage(targetLanguageCode);
+    setError(null);
+
+    const results: Array<{ pageNumber: number; content: string; translated: string }> = [];
+
+    try {
+      for (let i = 0; i < pages.length; i++) {
+        // Check for cancellation
+        if (isCancellingTranslation) {
+          console.log('[TRANSLATION] Traducción cancelada por el usuario');
+          break;
+        }
+
+        const page = pages[i];
+        console.log(`[TRANSLATION] Traduciendo página ${page.pageNumber} (${i + 1}/${pages.length})`);
+
+        try {
+          const translatedContent = await OpenAIService.translateTextToLanguage(
+            page.content, 
+            targetLanguageCode, 
+            sourceLanguageCode
+          );
+
+          results.push({
+            pageNumber: page.pageNumber,
+            content: page.content,
+            translated: translatedContent || page.content
+          });
+
+          // Update progress
+          setTranslationProgress(i + 1);
+          onProgress?.(i + 1, pages.length);
+
+          console.log(`[TRANSLATION] Página ${page.pageNumber} traducida exitosamente`);
+        } catch (pageError) {
+          console.error(`[TRANSLATION] Error traduciendo página ${page.pageNumber}:`, pageError);
+          // En caso de error, mantener contenido original
+          results.push({
+            pageNumber: page.pageNumber,
+            content: page.content,
+            translated: page.content
+          });
+          setTranslationProgress(i + 1);
+          onProgress?.(i + 1, pages.length);
+        }
+
+        // Small delay to prevent API rate limiting
+        if (i < pages.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      return results;
+    } catch (err) {
+      setError(err as Error);
+      console.error('Error en traducción masiva:', err);
+      return results;
+    } finally {
+      setIsTranslatingBulk(false);
+      setIsCancellingTranslation(false);
+      setTranslationProgress(0);
+      setTranslationTotal(0);
+    }
+  }, [isCancellingTranslation]);
+
+  // Función para cancelar traducción
+  const cancelTranslation = useCallback(() => {
+    setIsCancellingTranslation(true);
+    console.log('[TRANSLATION] Solicitando cancelación de traducción...');
+  }, []);
+
+  // Función para resetear manualmente el estado de traducción
+  const resetTranslationState = useCallback(() => {
+    setIsTranslatingBulk(false);
+    setIsCancellingTranslation(false);
+    setTranslationProgress(0);
+    setTranslationTotal(0);
+    setCurrentFromLanguage('');
+    setCurrentToLanguage('');
+    console.log('[TRANSLATION] Estado de traducción reseteado manualmente');
+  }, []);
+
   return {
     translateWord,
     translateParagraph,
     translatePageText,
+    translateBookPages,
     simulateTranslation,
+    cancelTranslation,
+    resetTranslationState,
     isTranslating,
+    isTranslatingBulk,
+    translationProgress,
+    translationTotal,
+    isCancellingTranslation,
+    currentFromLanguage,
+    currentToLanguage,
     error
   };
 };

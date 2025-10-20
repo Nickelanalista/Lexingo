@@ -35,127 +35,105 @@ export const BookProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pagesSkipped, setPagesSkipped] = useState<number>(0);
 
-  // Función para determinar si una página está vacía
+  // Función simplificada para determinar si una página está vacía
   const isPageEmpty = (content: string): boolean => {
-    if (!content) {
-      console.log('[DIAGNÓSTICO] Content es vacío');
+    if (!content || content.trim().length < 10) {
       return true;
     }
     
-    // Eliminar espacios en blanco, saltos de línea, etc.
     const trimmedContent = content.trim();
     
-    // Considerar vacía si solo tiene caracteres especiales o espacios
-    if (trimmedContent.length === 0) {
-      console.log('[DIAGNÓSTICO] Content está vacío después de trim');
-      return true;
-    }
-    
-    // Considerar vacía si solo tiene pocos caracteres o solo números de página
-    if (trimmedContent.length < 10) {
-      console.log(`[DIAGNÓSTICO] Content es muy corto (${trimmedContent.length} caracteres): "${trimmedContent}"`);
-      return true;
-    }
-    
-    // Considerar vacía si solo contiene patrones como "Página X" o similares
+    // Patrones de páginas vacías comunes
     const pagePatterns = [
-      /^page\s*\d+$/i, // "Page 1", "Page2", etc.
-      /^p\.\s*\d+$/i,  // "p. 1", "P.2", etc.
-      /^\d+$/, // Solo números
-      /^[\d\s-.,;:]+$/, // Solo números y puntuación
-      /^chapter\s*\d*$/i, // "Chapter", "Chapter 1", etc.
-      /^section\s*\d*$/i, // "Section", "Section 1", etc.
-      /^part\s*\d*$/i // "Part", "Part 1", etc.
+      /^page\s*\d+$/i,
+      /^p\.\s*\d+$/i,
+      /^\d+$/,
+      /^[\d\s-.,;:]+$/,
+      /^chapter\s*\d*$/i,
+      /^section\s*\d*$/i,
+      /^part\s*\d*$/i
     ];
     
-    for (const pattern of pagePatterns) {
-      if (pattern.test(trimmedContent)) {
-        console.log(`[DIAGNÓSTICO] Content coincide con patrón de página vacía: "${trimmedContent}"`);
-        return true;
-      }
-    }
-    
-    console.log(`[DIAGNÓSTICO] Content tiene contenido válido (${trimmedContent.length} caracteres)`);
-    return false;
+    return pagePatterns.some(pattern => pattern.test(trimmedContent));
   };
 
-  // Función para encontrar la primera página no vacía
+  // Función simplificada para encontrar la primera página no vacía
   const findFirstNonEmptyPage = (pages: { content: string }[]): number => {
-    if (!pages || pages.length === 0) {
-      console.log('[DIAGNÓSTICO] No hay páginas para analizar');
-      return 1;
-    }
-
-    console.log(`[DIAGNÓSTICO] Analizando ${pages.length} páginas para encontrar la primera no vacía`);
+    console.log(`🔍 [SKIP EMPTY] Buscando primera página no vacía entre ${pages.length} páginas...`);
     
-    // Verificar el contenido de las primeras páginas para depuración
-    for (let i = 0; i < Math.min(5, pages.length); i++) {
-      console.log(`[DIAGNÓSTICO] Página ${i+1} - Contenido: "${pages[i].content?.substring(0, 50)}..."` +
-        ` (${pages[i].content?.length || 0} caracteres)`);
+    if (!pages || pages.length === 0) {
+      console.log(`❌ [SKIP EMPTY] No hay páginas, retornando página 1`);
+      return 1;
     }
     
     for (let i = 0; i < pages.length; i++) {
-      console.log(`[DIAGNÓSTICO] Evaluando si la página ${i+1} está vacía...`);
-      if (!isPageEmpty(pages[i].content)) {
-        console.log(`[DIAGNÓSTICO] Primera página no vacía encontrada: ${i + 1}`);
-        return i + 1; // Las páginas se indexan desde 1, pero el array desde 0
-      } else {
-        console.log(`[DIAGNÓSTICO] Página ${i+1} detectada como vacía, continuando búsqueda...`);
+      const content = pages[i].content;
+      const isEmpty = isPageEmpty(content);
+      console.log(`📄 [SKIP EMPTY] Página ${i + 1}: ${isEmpty ? 'VACÍA' : 'CON CONTENIDO'} - "${content?.substring(0, 50)}${content?.length > 50 ? '...' : ''}"`);
+      
+      if (!isEmpty) {
+        console.log(`✅ [SKIP EMPTY] Primera página con contenido encontrada: página ${i + 1}`);
+        return i + 1;
       }
     }
-    console.log('[DIAGNÓSTICO] No se encontraron páginas no vacías en todo el libro');
-    return 1; // Si todas las páginas están vacías, volver a la primera
+    
+    console.log(`⚠️ [SKIP EMPTY] Todas las páginas están vacías, retornando página 1`);
+    return 1;
   };
 
   // Función para cargar un libro y comenzar en la primera página no vacía
   const loadBookAndSkipEmptyPages = (bookData: Book) => {
     if (!bookData || !bookData.pages || bookData.pages.length === 0) {
-      console.log('[DIAGNÓSTICO] Libro sin páginas o inválido');
       setBook(bookData);
       setPagesSkipped(0);
       return;
     }
-
-    console.log(`[DIAGNÓSTICO] Cargando libro: "${bookData.title}" con ${bookData.pages.length} páginas`);
-    console.log(`[DIAGNÓSTICO] Página actual guardada en DB: ${bookData.currentPage}`);
     
     // Establecer loading a true durante el proceso
     setIsLoading(true);
     
-    // Buscamos la primera página no vacía solo si estamos comenzando un libro nuevo
-    let startPage = bookData.currentPage;
+    // Prioridad de páginas: bookmark_page > current_page > primera página con contenido
+    let startPage = bookData.currentPage || 1;
     let skipPages = false;
+    let reason = 'saved_page';
     
-    // Si estamos en la primera página (libro nuevo o recién abierto), buscamos la primera página con contenido
-    if (bookData.currentPage === 1) {
-      console.log('[DIAGNÓSTICO] Libro nuevo o en página inicial, buscando primera página no vacía...');
-      startPage = findFirstNonEmptyPage(bookData.pages);
-      skipPages = true;
-      console.log(`[DIAGNÓSTICO] Primera página no vacía identificada: ${startPage}`);
-      
-      // Calcular cuántas páginas se omitieron
-      const skipped = startPage - 1;
-      setPagesSkipped(skipped > 0 ? skipped : 0);
-      console.log(`[DIAGNÓSTICO] Páginas a omitir: ${skipped}`);
-    } else {
-      // Si ya tenemos una página guardada, la respetamos SIEMPRE
-      console.log(`[DIAGNÓSTICO] Respetando la página guardada del usuario: ${bookData.currentPage}`);
-      setPagesSkipped(0); // No mostrar mensaje de páginas omitidas cuando usamos la página guardada
+    // 1. Verificar si hay un marcador guardado en Supabase (máxima prioridad)
+    if (bookData.bookmarked && bookData.bookmark_page && bookData.bookmark_page > 1) {
+      startPage = bookData.bookmark_page;
+      setPagesSkipped(0); // No mostrar mensaje para marcadores
+      reason = 'bookmark';
     }
-    
-    // Verificar si hay un marcador guardado en Supabase y tiene prioridad
-    if (bookData.bookmarked && bookData.bookmark_page) {
-      // Solo usar el marcador si venimos desde la página de "Mis Libros" 
-      // y hemos hecho clic en el libro (no si ya estábamos leyendo)
-      if (skipPages) {
-        startPage = bookData.bookmark_page;
-        console.log(`[DIAGNÓSTICO] Usando página de marcador: ${startPage}`);
-        setPagesSkipped(0); // No mostrar mensaje para marcadores
+    // 2. Si no hay marcador, usar la página guardada en current_page
+    else if (bookData.currentPage && bookData.currentPage > 1) {
+      startPage = bookData.currentPage;
+      setPagesSkipped(0); // No mostrar mensaje para páginas guardadas
+      reason = 'saved_page';
+    }
+    // 3. Solo si es un libro completamente nuevo (página 1), buscar primera página con contenido
+    else if (bookData.currentPage === 1 || !bookData.currentPage) {
+      const firstContentPage = findFirstNonEmptyPage(bookData.pages);
+      if (firstContentPage > 1) {
+        startPage = firstContentPage;
+        skipPages = true;
+        reason = 'skip_empty';
+        
+        // Calcular cuántas páginas se omitieron
+        const skipped = startPage - 1;
+        setPagesSkipped(skipped > 0 ? skipped : 0);
+      } else {
+        startPage = 1;
+        setPagesSkipped(0);
       }
     }
     
+    console.log(`📚 [BOOK CONTEXT] Loading book "${bookData.title}"`);
+    console.log(`📚 [BOOK CONTEXT] - Reason: ${reason}`);
+    console.log(`📚 [BOOK CONTEXT] - Start page: ${startPage}`);
+    console.log(`📚 [BOOK CONTEXT] - Current page from DB: ${bookData.currentPage}`);
+    console.log(`📚 [BOOK CONTEXT] - Bookmark page: ${bookData.bookmark_page}`);
+    console.log(`📚 [BOOK CONTEXT] - Pages skipped: ${reason === 'skip_empty' ? startPage - 1 : 0}`);
+    
     // Actualizar el libro con la página inicial correcta
-    console.log(`[DIAGNÓSTICO] Estableciendo página inicial final: ${startPage}`);
     setBook({
       ...bookData,
       currentPage: startPage
@@ -163,46 +141,78 @@ export const BookProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Finalizar loading después de completar el proceso
     setTimeout(() => {
-      console.log('[DIAGNÓSTICO] Finalizando estado de carga');
       setIsLoading(false);
     }, 800);
   };
 
-  // Función para actualizar el progreso de lectura en Supabase
+  // Función para actualizar el progreso de lectura en Supabase (con debounce)
   const updateReadingProgress = async (bookId: string, pageNumber: number) => {
+    console.log(`🔄 [UPDATE PROGRESS] Solicitando actualización: libro ${bookId}, página ${pageNumber}`);
+    
+    // Evitar actualizaciones demasiado frecuentes que causen ERR_INSUFFICIENT_RESOURCES
+    const debounceKey = `${bookId}_${pageNumber}`;
+    const lastUpdate = updateReadingProgress.lastUpdate || {};
+    const now = Date.now();
+    
+    // Solo actualizar si ha pasado al menos 1 segundo desde la última actualización para esta página
+    if (lastUpdate[debounceKey] && (now - lastUpdate[debounceKey]) < 1000) {
+      console.log(`⏸️ [UPDATE PROGRESS] Debounce activo, saltando actualización (última hace ${now - lastUpdate[debounceKey]}ms)`);
+      return;
+    }
+    
+    lastUpdate[debounceKey] = now;
+    updateReadingProgress.lastUpdate = lastUpdate;
+    
     try {
-      const { error } = await supabase
+      console.log(`💾 [UPDATE PROGRESS] Ejecutando actualización en Supabase...`);
+      // Actualizando progreso de lectura
+      const timestamp = new Date().toISOString();
+      
+      const { error, data } = await supabase
         .from('books')
         .update({
           current_page: pageNumber,
-          last_read: new Date().toISOString()
+          last_read: timestamp,
+          updated_at: timestamp
         })
-        .eq('id', bookId);
+        .eq('id', bookId)
+        .select('title, current_page, last_read');
 
       if (error) {
-        console.error('Error al actualizar el progreso de lectura:', error);
+        console.error(`❌ [UPDATE PROGRESS] Error en Supabase:`, error);
       } else {
-        console.log(`Progreso actualizado: Libro ${bookId}, Página ${pageNumber}`);
+        console.log(`✅ [UPDATE PROGRESS] Actualización exitosa en DB:`, data);
         
         // También actualizamos en localStorage como respaldo
         const potentialBookId = book?.title.replace(/\s+/g, '_').toLowerCase();
         if (potentialBookId) {
           localStorage.setItem(`book_${potentialBookId}_lastPage`, pageNumber.toString());
+          console.log(`💽 [UPDATE PROGRESS] Guardado en localStorage: book_${potentialBookId}_lastPage = ${pageNumber}`);
         }
       }
     } catch (err) {
-      console.error('Error en la actualización del progreso:', err);
+      console.error(`💥 [UPDATE PROGRESS] Error crítico:`, err);
     }
   };
 
   // Resetear páginas omitidas cuando se navega manualmente
   const goToPage = (pageNumber: number) => {
-    if (!book) return;
+    if (!book) {
+      console.log(`❌ [GO TO PAGE] No hay libro cargado`);
+      return;
+    }
+    
+    const validPage = Math.max(1, Math.min(pageNumber, book.totalPages));
+    console.log(`📍 [GO TO PAGE] Navegando de página ${book.currentPage} a página ${validPage} (solicitada: ${pageNumber})`);
+    
+    // Evitar actualizaciones innecesarias que causen bucles
+    if (book.currentPage === validPage) {
+      console.log(`⏭️ [GO TO PAGE] Ya estamos en la página ${validPage}, saltando actualización`);
+      return;
+    }
     
     // Resetear el contador de páginas omitidas para no mostrar el mensaje
     setPagesSkipped(0);
-    
-    const validPage = Math.max(1, Math.min(pageNumber, book.totalPages));
     
     // Actualizar el estado local
     setBook({
@@ -212,7 +222,10 @@ export const BookProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Si el libro tiene un ID, actualizamos el progreso en la base de datos
     if (book.id) {
+      console.log(`💾 [GO TO PAGE] Actualizando progreso en DB: libro ${book.id}, página ${validPage}`);
       updateReadingProgress(book.id, validPage);
+    } else {
+      console.log(`⚠️ [GO TO PAGE] Libro sin ID, no se puede guardar progreso en DB`);
     }
   };
 

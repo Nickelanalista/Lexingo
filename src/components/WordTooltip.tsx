@@ -4,7 +4,7 @@ import { useFloating, offset, flip, shift, arrow, autoUpdate } from '@floating-u
 import { useTranslator } from '../hooks/useTranslator';
 import { TranslationResult } from '../types';
 import { Loader2, X, Volume2, VolumeX, Sparkles } from 'lucide-react';
-import TTSService from '../services/tts';
+import { AudiobookService } from '../services/audiobookService';
 import AIChatModal from './AIChatModal';
 
 interface WordTooltipProps {
@@ -106,7 +106,11 @@ const WordTooltip: React.FC<WordTooltipProps> = ({
     if (!text) return;
     try {
       setIsPlayingAudio(languageCode);
-      await TTSService.speakText(text, languageCode as 'en'|'es'|'fr'|'it'|'ja'|'de'|'pt');
+      const blob = await AudiobookService.generateSpeech(text, languageCode, 'nova');
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      await audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error al reproducir audio:', error);
     } finally {

@@ -2,15 +2,24 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { useTranslator } from '../hooks/useTranslator';
+import { useAudiobook } from '../hooks/useAudiobook';
+import { useFileProcessor } from '../hooks/useFileProcessor';
 import { getLanguageName, OpenAIService } from '../services/openai';
 import { Word, TranslationResult, Book } from '../types';
 import WordTooltip from './WordTooltip';
-import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Languages, Volume2, VolumeX, Loader2, Sparkles, Check, ChevronDown } from 'lucide-react';
+import { XCircle, Maximize, Minimize, Sun, Moon, Plus, Minus, HelpCircle, X, ArrowLeft, ArrowRight, Home, Languages, Volume2, VolumeX, Loader2, Sparkles, Check, ChevronDown, Play, Pause, Square, SkipForward, SkipBack, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useFloating, offset, flip, shift, autoUpdate, useClick, useDismiss, useRole, useInteractions, FloatingFocusManager } from '@floating-ui/react';
-import TTSService from '../services/tts';
+import { AudiobookService } from '../services/audiobookService';
 import { supabase } from '../lib/supabase';
 import AIChatModal from './AIChatModal';
+import AudiobookControls from './AudiobookControls';
+import KaraokeText from './KaraokeText';
+import SyncedLyricsDisplay from './SyncedLyricsDisplay';
+import AudiobookDebugInfo from './AudiobookDebugInfo';
+import OCRProgressPopup from './OCRProgressPopup';
+import TranslationProgressPopup from './TranslationProgressPopup';
+import MinimalLoadingIndicator from './MinimalLoadingIndicator';
 import Flag from 'react-world-flags';
 
 // Mapeo de códigos de idioma a códigos de país para las banderas
@@ -40,13 +49,122 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const navigate = useNavigate();
   const { book, setBook, goToPage, pagesSkipped, loadBookAndSkipEmptyPages, updateReadingProgress, isLoading } = useBookContext();
   const { fontSize, increaseFontSize, decreaseFontSize, theme, toggleTheme } = useThemeContext();
-  const { translateParagraph, translateWord, translatePageText, isTranslating: isTranslatorLoading } = useTranslator();
+  const { 
+    translateParagraph, 
+    translateWord, 
+    translatePageText, 
+    translateBookPages, 
+    cancelTranslation,
+    resetTranslationState,
+    isTranslating: isTranslatorLoading,
+    isTranslatingBulk,
+    translationProgress,
+    translationTotal,
+    isCancellingTranslation,
+    currentFromLanguage,
+    currentToLanguage
+  } = useTranslator();
+  const { cancelOCR, isProcessingBackground, ocrProgress, ocrTotal, isCancelling } = useFileProcessor();
+  
+  // Estado para el avatar del usuario
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [userInitials, setUserInitials] = useState<string>('U');
+  
+  // Hook del audiolibro
+  const [audiobookState, audiobookControls] = useAudiobook();
+  
+  // Cargar perfil del usuario para el header
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!error && data) {
+          // Obtener iniciales del nombre
+          const name = data.name || user.user_metadata?.name || user.email?.split('@')[0] || 'Usuario';
+          const initials = name
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+          
+          setUserInitials(initials);
+          
+          // Si tiene avatar, usarlo
+          if (data.avatar_url) {
+            setAvatarUrl(`${data.avatar_url}?t=${Date.now()}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+      }
+    };
+
+    loadUserProfile();
+  }, []);
+
+  // Agregar estilos para la línea divisoria brillante
+  useEffect(() => {
+    const styleId = 'reader-header-divider-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        @keyframes shimmerLine {
+          0% {
+            background-position: -300% 50%;
+          }
+          100% {
+            background-position: 300% 50%;
+          }
+        }
+        
+        .header-divider {
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 30%,
+            rgba(147, 51, 234, 0.1) 40%,
+            rgba(147, 51, 234, 0.3) 45%,
+            rgba(147, 51, 234, 0.6) 48%,
+            rgba(147, 51, 234, 0.8) 50%,
+            rgba(147, 51, 234, 0.6) 52%,
+            rgba(147, 51, 234, 0.3) 55%,
+            rgba(147, 51, 234, 0.1) 60%,
+            transparent 70%,
+            transparent 100%
+          );
+          background-size: 600% 100%;
+          animation: shimmerLine 20s linear infinite;
+        }
+        
+        .simple-divider {
+          background: #d1d5db;
+        }
+        
+        .dark .simple-divider {
+          background: #4b5563;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
   
   // Estado para mostrar el mensaje de páginas omitidas
   const [showSkippedMessage, setShowSkippedMessage] = useState(false);
   
-  // Estado para el idioma de lectura actual del libro
-  const [currentBookLanguage, setCurrentBookLanguage] = useState<string>('en');
+  // Estado para el idioma de lectura actual del libro - inicializar con idioma preferido
+  const [currentBookLanguage, setCurrentBookLanguage] = useState<string>(() => {
+    return localStorage.getItem('preferred_language') || 'en';
+  });
   const [sourceBookLanguage, setSourceBookLanguage] = useState<string>('en');
   const [translatedPageContent, setTranslatedPageContent] = useState<string | null>(null);
   const [isPageTranslating, setIsPageTranslating] = useState(false);
@@ -59,6 +177,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const [proactivelyTranslatedNextPageContent, setProactivelyTranslatedNextPageContent] = useState<string | null>(null);
   const [proactivelyTranslatedForPageNumber, setProactivelyTranslatedForPageNumber] = useState<number | null>(null);
   const [isProactivelyTranslatingNextPage, setIsProactivelyTranslatingNextPage] = useState(false);
+  
+  // Flag para evitar bucle infinito en la verificación de páginas
+  const [hasCheckedPages, setHasCheckedPages] = useState(false);
+  
+  // Flag para indicar que estamos navegando manualmente (evitar interferencia)
+  const [isManuallyNavigating, setIsManuallyNavigating] = useState(false);
 
   const prevBookPageRef = useRef<number | null>(null);
   const lastDisplayedPageAndLangRef = useRef({ page: 0, lang: '' });
@@ -71,7 +195,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     const fetchLastReadBook = async () => {
       if (!book) {
         try {
-          console.log('[CARGA] Iniciando búsqueda de último libro leído');
+          // Cargar último libro leído
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
           
@@ -84,14 +208,17 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             .single();
             
           if (error || !data) {
-            console.log('[CARGA] No se encontró un libro reciente o error:', error);
+            // No hay libro reciente disponible
             return;
           }
           
           // Cargar el libro encontrado
-          console.log('[CARGA] Libro encontrado en Supabase: ', data.title);
           const bookContent = JSON.parse(data.content);
-          console.log(`[CARGA] El libro tiene ${bookContent.length} páginas. Página actual: ${data.current_page || 1}`);
+          
+          // Verificar si el libro tiene contenido válido
+          if (!bookContent || bookContent.length === 0) {
+            return;
+          }
           
           const bookData = {
             id: data.id,
@@ -108,14 +235,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           };
           
           // Asegurar que se procesen las páginas vacías al cargar
-          console.log('[CARGA] Llamando a loadBookAndSkipEmptyPages para omitir páginas vacías');
           loadBookAndSkipEmptyPages(bookData);
-          console.log('[CARGA] Libro reciente cargado automáticamente:', data.title);
           
-          // Resetear el flag de detección de idioma para el nuevo libro
+          // Resetear flags para el nuevo libro
           setBookLanguageDetected(false);
+          setHasCheckedPages(false);
         } catch (error) {
-          console.error('[CARGA] Error al cargar el último libro leído:', error);
+          console.error('Error al cargar el último libro leído:', error);
         }
       }
     };
@@ -126,7 +252,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   // MEJORADO: Efecto único para detectar el idioma del libro solo una vez al cargarse
   useEffect(() => {
     if (book && !isLoading && !bookLanguageDetected) {
-      console.log('[DETECCIÓN-INICIAL] Iniciando detección única de idioma del libro');
+      // Detectar idioma del libro
       
       // Buscar una página con contenido válido para la detección
       let pageWithContent = null;
@@ -147,13 +273,13 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       }
       
       if (!pageWithContent) {
-        console.log('[DETECCIÓN-INICIAL] No se encontró contenido válido para detección, asumiendo inglés');
+        // No hay contenido para detectar idioma, usar inglés por defecto
         setSourceBookLanguage('en');
         setBookLanguageDetected(true);
         return;
       }
       
-      console.log(`[DETECCIÓN-INICIAL] Analizando contenido de página ${pageWithContent} para detectar idioma`);
+      // Detectar idioma del contenido encontrado
       
       // Detectar idioma basado en características del texto
       const detectBookLanguage = (content: string): string => {
@@ -173,7 +299,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         const spanishEndings = content.match(/\w+(ción|dad|mente|aba|aban|ado|ido|amos|emos|imos)\b/gi) || [];
         const englishEndings = content.match(/\w+(ing|ly|ed|tion|ness)\b/gi) || [];
         
-        console.log(`[DETECCIÓN-INICIAL] Puntuación - Español: ${spanishWordCount + spanishEndings.length + (hasSpanishChars ? 10 : 0)}, Inglés: ${englishWordCount + englishEndings.length}`);
         
         // Decidir el idioma
         const spanishScore = spanishWordCount + spanishEndings.length + (hasSpanishChars ? 10 : 0);
@@ -187,76 +312,295 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       };
       
       const detectedLanguage = detectBookLanguage(pageContentForDetection);
-      console.log(`[DETECCIÓN-INICIAL] Idioma detectado del libro: ${detectedLanguage}`);
       
       setSourceBookLanguage(detectedLanguage);
       setBookLanguageDetected(true);
       
       // NUEVA LÓGICA: Verificar si necesitamos traducir automáticamente
       const checkAndAutoTranslate = async () => {
+        console.log('🔥 [checkAndAutoTranslate] FUNCIÓN EJECUTÁNDOSE!');
+        console.log('🔥 [checkAndAutoTranslate] - Book ID:', book.id);
+        console.log('🔥 [checkAndAutoTranslate] - Book pages:', book.pages?.length);
+        
         try {
-          // Obtener el idioma objetivo preferido del usuario
+          // Obtener configuración del libro desde Supabase
           const { data: { user } } = await supabase.auth.getUser();
-          if (!user) return;
-
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('preferred_language')
-            .eq('id', user.id)
-            .single();
-
-          const userPreferredLanguage = profile?.preferred_language || 'en';
-          console.log(`[DETECCIÓN-INICIAL] Idioma preferido del usuario: ${userPreferredLanguage}`);
-          console.log(`[DETECCIÓN-INICIAL] Idioma del libro: ${detectedLanguage}`);
-
-          // NUEVA LÓGICA: Si los idiomas son iguales, NO hacer nada
-          if (detectedLanguage === userPreferredLanguage) {
-            console.log('[DETECCIÓN-INICIAL] Idiomas coinciden, no se requiere traducción automática');
-            setCurrentBookLanguage(detectedLanguage);
-            setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+          if (!user) {
             return;
           }
 
-          // Solo traducir si los idiomas son diferentes
-          console.log(`[DETECCIÓN-INICIAL] Idiomas diferentes detectados. Iniciando traducción automática de ${detectedLanguage} a ${userPreferredLanguage}`);
+          // Obtener tanto el idioma preferido como la configuración del libro
+          const [profileResult, bookResult] = await Promise.all([
+            supabase.from('profiles').select('preferred_language').eq('id', user.id).single(),
+            book.id ? supabase.from('books').select('source_language, display_language').eq('id', book.id).single() : null
+          ]);
+
+          // Priorizar localStorage sobre base de datos para idioma preferido
+          const localStorageLanguage = localStorage.getItem('preferred_language');
+          const userPreferredLanguage = localStorageLanguage || profileResult.data?.preferred_language || 'en';
+          const bookSourceLang = bookResult?.data?.source_language || detectedLanguage;
+          const bookDisplayLang = bookResult?.data?.display_language || userPreferredLanguage;
+
+
+          // NUEVA LÓGICA: Usar el display_language específico del libro, fallback a preferencia del usuario
+          console.log(`[AUTO-TRADUCIR] Idioma detectado del libro: ${detectedLanguage}`);
+          console.log(`[AUTO-TRADUCIR] Idioma preferido del usuario: ${userPreferredLanguage}`);
+          console.log(`[AUTO-TRADUCIR] Display language del libro: ${bookDisplayLang}`);
           
-          // Actualizar el idioma de visualización
-          setCurrentBookLanguage(userPreferredLanguage);
+          setCurrentBookLanguage(bookDisplayLang);
+
+          // Si el display language es igual al idioma fuente del libro, mostrar original
+          if (detectedLanguage === bookDisplayLang) {
+            console.log('[AUTO-TRADUCIR] Idiomas iguales, mostrando contenido original');
+            // Resetear cualquier estado de traducción que pueda estar activo
+            resetTranslationState();
+            // No necesita traducción, mostrar contenido original
+            setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+            
+            // También establecer la página siguiente para navegación rápida
+            const nextPageNum = book.currentPage + 1;
+            if (nextPageNum <= book.totalPages) {
+              const nextPageContent = book.pages[nextPageNum - 1]?.content;
+              if (nextPageContent) {
+                setProactivelyTranslatedNextPageContent(nextPageContent);
+                setProactivelyTranslatedForPageNumber(nextPageNum);
+              }
+            }
+            return;
+          }
+
+          // Verificar si el libro ya tiene traducciones cached
+          const { data: bookData } = await supabase
+            .from('books')
+            .select('translation_cached')
+            .eq('id', book.id)
+            .single();
+
+          // Verificar si ya hay traducciones para este idioma en el cache
+          const translationCache = bookData?.translation_cached || {};
+          const hasTranslationsForLanguage = translationCache[bookDisplayLang] && 
+            Object.keys(translationCache[bookDisplayLang]).length > 0;
+
+          if (hasTranslationsForLanguage) {
+            console.log('[AUTO-TRADUCIR] Libro ya tiene traducciones cached, no se ejecutará traducción masiva');
+            // Resetear cualquier estado de traducción que pueda estar activo
+            resetTranslationState();
+            // Mostrar contenido original y salir
+            setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+            return;
+          }
           
-          // Traducir la página actual automáticamente
-          if (book.pages[book.currentPage - 1]?.content) {
-            setIsCurrentPageTranslating(true);
-            try {
-              const translatedContent = await translatePageText(
-                book.pages[book.currentPage - 1].content,
-                userPreferredLanguage,
-                detectedLanguage
-              );
-              setCurrentPageContentForDisplay(translatedContent);
-              console.log(`[DETECCIÓN-INICIAL] Página ${book.currentPage} traducida automáticamente`);
-            } catch (error) {
-              console.error('[DETECCIÓN-INICIAL] Error en traducción automática:', error);
-              setCurrentPageContentForDisplay(book.pages[book.currentPage - 1].content);
-            } finally {
-              setIsCurrentPageTranslating(false);
+          console.log(`[AUTO-TRADUCIR] Iniciando configuración automática: ${detectedLanguage} → ${bookDisplayLang}`);
+
+          // LÓGICA: Si los idiomas son iguales, mostrar original. Si no, traducir con progreso
+          
+          // TRADUCCIÓN MASIVA CON POPUP DE PROGRESO
+          // Preparar páginas para traducir (primeras 10 páginas para empezar)
+          const maxPagesToTranslate = Math.min(15, book.totalPages);
+          const pagesData = [];
+          
+          for (let i = 0; i < maxPagesToTranslate; i++) {
+            const pageContent = book.pages[i]?.content;
+            if (pageContent && 
+                !pageContent.startsWith('[Contenido de la página') && 
+                !pageContent.startsWith('[Procesando OCR para página') &&
+                pageContent.trim().length > 20) {
+              pagesData.push({
+                pageNumber: i + 1,
+                content: pageContent
+              });
             }
           }
+          
+          console.log(`[AUTO-TRADUCIR] Preparando traducción masiva de ${pagesData.length} páginas`);
+          
+          if (pagesData.length > 0) {
+            try {
+              // Mostrar contenido original inicialmente
+              setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+              
+              // Iniciar traducción masiva con popup de progreso
+              console.log(`[AUTO-TRADUCIR] Iniciando traducción masiva con popup visible`);
+              
+              const translatedPages = await translateBookPages(
+                pagesData,
+                bookDisplayLang, // idioma destino (display language del libro)
+                detectedLanguage, // idioma origen
+                (progress, total) => {
+                  console.log(`[AUTO-TRADUCIR] Progreso visible: ${progress}/${total} páginas`);
+                }
+              );
+              
+              console.log(`[AUTO-TRADUCIR] ✅ Traducción masiva completada: ${translatedPages.length} páginas procesadas`);
+              
+              // Actualizar página actual con traducción
+              const currentPageTranslated = translatedPages.find(p => p.pageNumber === book.currentPage);
+              if (currentPageTranslated) {
+                setCurrentPageContentForDisplay(currentPageTranslated.translated);
+                // Actualizar la referencia con la configuración correcta
+                lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: bookDisplayLang };
+                console.log(`[AUTO-TRADUCIR] ✅ Página actual ${book.currentPage} actualizada con contenido traducido`);
+              }
+              
+              // Pre-cargar página siguiente
+              const nextPageNum = book.currentPage + 1;
+              const nextPageTranslated = translatedPages.find(p => p.pageNumber === nextPageNum);
+              if (nextPageTranslated) {
+                setProactivelyTranslatedNextPageContent(nextPageTranslated.translated);
+                setProactivelyTranslatedForPageNumber(nextPageNum);
+                console.log(`[AUTO-TRADUCIR] ✅ Página siguiente ${nextPageNum} pre-cargada`);
+              }
+              
+              // TODO: Guardar traducciones en caché o base de datos para futuras navegaciones
+              
+            } catch (error) {
+              console.error('[AUTO-TRADUCIR] ❌ Error en traducción masiva:', error);
+              // Fallback: mostrar contenido original
+              setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+            }
+          } else {
+            console.log('[AUTO-TRADUCIR] ⚠️ No hay páginas válidas para traducir');
+            // Mostrar contenido original si no hay nada que traducir
+            setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
+          }
         } catch (error) {
-          console.error('[DETECCIÓN-INICIAL] Error al verificar idioma preferido:', error);
-          // Fallback: usar configuración por defecto sin traducir
-          setCurrentBookLanguage(detectedLanguage);
+          // Fallback: usar idioma preferido pero sin traducir
+          const localStorageLanguage = localStorage.getItem('preferred_language');
+          const preferredLang = localStorageLanguage || 'en';
+          setCurrentBookLanguage(preferredLang);
           setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
         }
       };
 
-      checkAndAutoTranslate();
+      // Solo ejecutar auto-traducción si es realmente la primera vez que se abre el libro
+      // Verificamos si ya existen traducciones como indicador de que ya se procesó
+      const shouldCheckAutoTranslate = async () => {
+        if (!book.id) return false;
+        
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return false;
+          
+          // Obtener tanto el idioma preferido como la configuración específica del libro
+          const localStorageLanguage = localStorage.getItem('preferred_language');
+          const [profileData, bookData] = await Promise.all([
+            supabase.from('profiles').select('preferred_language').eq('id', user.id).single(),
+            supabase.from('books').select('display_language, translation_cached').eq('id', book.id).single()
+          ]);
+          
+          const userPreferredLanguage = localStorageLanguage || profileData?.data?.preferred_language || 'en';
+          const bookDisplayLanguage = bookData?.data?.display_language || userPreferredLanguage;
+
+          const translationCache = bookData?.data?.translation_cached || {};
+          const hasTranslationsForLanguage = translationCache[bookDisplayLanguage] && 
+            Object.keys(translationCache[bookDisplayLanguage]).length > 0;
+          
+          // Si NO hay traducciones cached, entonces es la primera vez
+          return !hasTranslationsForLanguage;
+        } catch (error) {
+          console.error('Error checking auto-translate conditions:', error);
+          return false;
+        }
+      };
+      
+      // Deshabilitar checkAndAutoTranslate - los useEffect normales se encargan de la traducción
+      console.log('⚠️ [AUTO-TRANSLATE] Función checkAndAutoTranslate deshabilitada - usando useEffect para traducción normal');
+      
+      // Solo establecer el idioma fuente detectado para que los useEffect funcionen
+      setSourceBookLanguage(detectedLanguage);
+      
+      // Mostrar contenido original inicialmente, los useEffect se encargarán de traducir si es necesario
+      setCurrentPageContentForDisplay(book.pages[book.currentPage - 1]?.content || '');
     }
   }, [book, isLoading, bookLanguageDetected, translatePageText]);
   
   // Preservar la página actual cuando se actualiza el libro por OCR
   const prevBookRef = useRef<Book | null>(null);
   
+  // Efecto para cargar la configuración de idioma específica del libro cuando cambie el libro
   useEffect(() => {
+    const loadBookLanguageConfig = async () => {
+      if (!book?.id) return;
+      
+      console.log(`[LOAD-BOOK-CONFIG] Cargando configuración de idioma para libro: ${book.id}`);
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const localStorageLanguage = localStorage.getItem('preferred_language');
+        const [profileData, bookData] = await Promise.all([
+          supabase.from('profiles').select('preferred_language').eq('id', user.id).single(),
+          supabase.from('books').select('display_language').eq('id', book.id).single()
+        ]);
+        
+        const userPreferredLanguage = localStorageLanguage || profileData?.data?.preferred_language || 'en';
+        const bookDisplayLanguage = bookData?.data?.display_language || userPreferredLanguage;
+        
+        console.log(`[LOAD-BOOK-CONFIG] Display language del libro: ${bookDisplayLanguage}`);
+        
+        // Actualizar currentBookLanguage con la configuración específica del libro
+        if (currentBookLanguage !== bookDisplayLanguage) {
+          console.log(`[LOAD-BOOK-CONFIG] Actualizando idioma de ${currentBookLanguage} a ${bookDisplayLanguage}`);
+          // Limpiar la referencia de página/idioma para forzar re-traducción
+          console.log('[LOAD-BOOK-CONFIG] 🧹 Limpiando lastDisplayedPageAndLangRef por cambio de idioma');
+          lastDisplayedPageAndLangRef.current = null;
+          setCurrentBookLanguage(bookDisplayLanguage);
+
+          // Forzar re-traducción inmediata si hay contenido y los idiomas son diferentes
+          if (book && book.pages && book.currentPage && sourceBookLanguage &&
+              bookDisplayLanguage !== sourceBookLanguage && bookLanguageDetected) {
+            const originalContent = book.pages[book.currentPage - 1]?.content;
+            if (originalContent && !originalContent.startsWith('[Contenido de la página') &&
+                !originalContent.startsWith('[Procesando OCR para página')) {
+              console.log(`[LOAD-BOOK-CONFIG] 🌐 Forzando traducción inmediata de ${sourceBookLanguage} a ${bookDisplayLanguage}`);
+              setIsCurrentPageTranslating(true);
+              setCurrentPageContentForDisplay(null);
+
+              translatePageText(originalContent, bookDisplayLanguage, sourceBookLanguage)
+                .then(translated => {
+                  if (!book) return;
+                  console.log(`[LOAD-BOOK-CONFIG] ✅ Traducción forzada completada`);
+                  setCurrentPageContentForDisplay(translated || originalContent);
+                  lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: bookDisplayLanguage };
+                })
+                .catch(error => {
+                  if (!book) return;
+                  console.log(`[LOAD-BOOK-CONFIG] ❌ Error en traducción forzada:`, error);
+                  setCurrentPageContentForDisplay(originalContent);
+                  lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: bookDisplayLanguage };
+                })
+                .finally(() => {
+                  setIsCurrentPageTranslating(false);
+                });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[LOAD-BOOK-CONFIG] Error cargando configuración:', error);
+      }
+    };
+    
+    loadBookLanguageConfig();
+  }, [book?.id, sourceBookLanguage, bookLanguageDetected, translatePageText]); // Incluir dependencias necesarias
+  
+  // Limpiar referencia cuando cambie el libro para forzar re-evaluación
+  useEffect(() => {
+    if (book?.id) {
+      console.log(`[CLEAN-REF] 🧹 Limpiando referencia para libro: ${book.id}`);
+      lastDisplayedPageAndLangRef.current = null;
+    }
+  }, [book?.id]);
+  
+  // Removed hasAutoTranslatedRef - now using database check instead
+  
+  useEffect(() => {
+    // No interferir durante navegación manual
+    if (isManuallyNavigating) {
+      prevBookRef.current = book;
+      return;
+    }
+    
     // Si el libro se está actualizando durante el OCR, preservar la página actual
     if (book && prevBookRef.current && 
         book.id === prevBookRef.current.id && 
@@ -265,8 +609,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       
       // Solo actualizar si la página actual ha cambiado a 1 (reinicio no deseado)
       if (book.currentPage === 1 && prevBookRef.current.currentPage > 1) {
-        console.log(`Restaurando página actual: ${prevBookRef.current.currentPage} (evitando reinicio por OCR)`);
-        
         // Restaurar la página actual previa
         setBook({
           ...book,
@@ -277,7 +619,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     
     // Guardar referencia del libro actual para la próxima actualización
     prevBookRef.current = book;
-  }, [book, setBook]);
+  }, [book, setBook, isManuallyNavigating]);
   
   // Mostrar mensaje si se omitieron páginas, cada vez que se detecten páginas omitidas
   useEffect(() => {
@@ -336,6 +678,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showHelp, setShowHelp] = useState(true);
+  const [showAudioDebug, setShowAudioDebug] = useState(false);
   
   // Estados para la selección y traducción de párrafos
   const [isSelectingTextRange, setIsSelectingTextRange] = useState(false);
@@ -416,30 +759,38 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
   // Efecto 1: Manejar la página actual (N) - MEJORADO para evitar traducciones innecesarias
   useEffect(() => {
-    console.log('[PAGE_N_EFFECT] Triggered. Current Page:', book?.currentPage, 'Lang:', currentBookLanguage, 'SourceLang:', sourceBookLanguage, 'DisplayContent empty?', !currentPageContentForDisplay, 'ProactivePage:', proactivelyTranslatedForPageNumber, 'isTranslating:', isCurrentPageTranslating);
+    console.log(`[EFECTO-PÁGINA] 🔄 Ejecutándose - Página: ${book?.currentPage}, Idioma: ${currentBookLanguage}, Fuente: ${sourceBookLanguage}, Detectado: ${bookLanguageDetected}`);
 
     if (!book || !book.pages || book.pages.length === 0 || !book.currentPage) {
+      console.log('[EFECTO-PÁGINA] ❌ Saliendo - libro inválido');
       setCurrentPageContentForDisplay(null);
       setIsCurrentPageTranslating(false);
-      return;
-    }
-
-    // GUARDIA: Si el contenido ya se mostró para esta página/idioma
-    if (
-      lastDisplayedPageAndLangRef.current?.page === book.currentPage && 
-      lastDisplayedPageAndLangRef.current?.lang === currentBookLanguage && 
-      currentPageContentForDisplay
-    ) {
-      console.log(`[PAGE_N_EFFECT] Content for page ${book.currentPage} (${currentBookLanguage}) already displayed. Skipping re-processing.`);
-      console.log(`[PAGE_N_EFFECT] Current content (primeros 100 chars): ${currentPageContentForDisplay.substring(0, 100)}...`);
       return;
     }
 
     const pageIndex = book.currentPage - 1;
     const originalContent = book.pages[pageIndex]?.content;
 
+    // GUARDIA: Solo salir si el contenido YA ESTÁ TRADUCIDO al idioma correcto
+    const isContentTranslated = currentPageContentForDisplay && 
+                               currentPageContentForDisplay !== originalContent &&
+                               currentBookLanguage !== sourceBookLanguage;
+                               
+    if (
+      lastDisplayedPageAndLangRef.current?.page === book.currentPage && 
+      lastDisplayedPageAndLangRef.current?.lang === currentBookLanguage && 
+      isContentTranslated
+    ) {
+      console.log(`[EFECTO-PÁGINA] ✅ Ya hay contenido traducido para página ${book.currentPage} en ${currentBookLanguage}`);
+      return;
+    }
+    
+    // Si hay contenido pero es original y necesita traducirse, continuar
+    if (currentPageContentForDisplay === originalContent && currentBookLanguage !== sourceBookLanguage) {
+      console.log(`[EFECTO-PÁGINA] 🔄 Contenido es original, necesita traducirse de ${sourceBookLanguage} a ${currentBookLanguage}`);
+    }
+
     if (!originalContent || originalContent.startsWith('[Contenido de la página') || originalContent.startsWith('[Procesando OCR para página')) {
-      console.log('[PAGE_N_EFFECT] Placeholder content, setting to original.');
       setCurrentPageContentForDisplay(originalContent || '');
       setIsCurrentPageTranslating(false);
       return;
@@ -447,7 +798,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
     // Intentar usar contenido pre-traducido para la página N
     if (proactivelyTranslatedNextPageContent && proactivelyTranslatedForPageNumber === book.currentPage) {
-      console.log(`[PAGE_N_EFFECT] Using proactively translated content for page ${book.currentPage}`);
+      console.log(`[EFECTO-PÁGINA] ✅ Usando contenido pre-traducido para página ${book.currentPage}`);
       setCurrentPageContentForDisplay(proactivelyTranslatedNextPageContent);
       setIsCurrentPageTranslating(false);
       lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
@@ -456,7 +807,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
     // Si no hemos detectado el idioma aún, mostrar contenido original mientras tanto
     if (!bookLanguageDetected) {
-      console.log('[PAGE_N_EFFECT] Language not detected yet, showing original content');
       setCurrentPageContentForDisplay(originalContent);
       setIsCurrentPageTranslating(false);
       lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
@@ -465,27 +815,26 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
     // LÓGICA PRINCIPAL: Si el idioma seleccionado coincide con el idioma del libro, mostrar original
     if (currentBookLanguage === sourceBookLanguage) {
-      console.log(`[PAGE_N_EFFECT] Idioma seleccionado (${currentBookLanguage}) coincide con el del libro (${sourceBookLanguage}), mostrando contenido original`);
+      console.log(`[EFECTO-PÁGINA] ✅ Mostrando original - idiomas iguales (${currentBookLanguage})`);
       setCurrentPageContentForDisplay(originalContent);
       setIsCurrentPageTranslating(false);
       lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
     } else {
       // Necesita traducción
-      console.log(`[PAGE_N_EFFECT] Traduciendo de ${sourceBookLanguage} a ${currentBookLanguage}. Original: ${originalContent.substring(0,50)}...`);
+      console.log(`[EFECTO-PÁGINA] 🌐 Traduciendo de ${sourceBookLanguage} a ${currentBookLanguage}`);
       setIsCurrentPageTranslating(true);
       setCurrentPageContentForDisplay(null);
       
       translatePageText(originalContent, currentBookLanguage, sourceBookLanguage)
         .then(translated => {
           if (!book) return;
-          console.log(`[PAGE_N_EFFECT] Traducción para página ${book.currentPage} completada.`);
-          console.log(`[PAGE_N_EFFECT] Contenido traducido (primeros 100 chars): ${translated?.substring(0, 100)}...`);
+          console.log(`[EFECTO-PÁGINA] ✅ Traducción completada para página ${book.currentPage}`);
           setCurrentPageContentForDisplay(translated || originalContent);
           lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
         })
         .catch(error => {
           if (!book) return;
-          console.error(`[PAGE_N_EFFECT] Error traduciendo página ${book.currentPage}:`, error);
+          console.log(`[EFECTO-PÁGINA] ❌ Error en traducción:`, error);
           setCurrentPageContentForDisplay(originalContent);
           lastDisplayedPageAndLangRef.current = { page: book.currentPage, lang: currentBookLanguage };
         })
@@ -493,11 +842,14 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           setIsCurrentPageTranslating(false);
         });
     }
-  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.pages, proactivelyTranslatedNextPageContent, proactivelyTranslatedForPageNumber, translatePageText, currentPageContentForDisplay, isCurrentPageTranslating, bookLanguageDetected]);
+  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.pages, proactivelyTranslatedNextPageContent, proactivelyTranslatedForPageNumber, translatePageText, bookLanguageDetected]);
 
   // Efecto 2: Traducir proactivamente la página N+1 - MEJORADO
   useEffect(() => {
+    console.log(`[EFECTO-N+1] 🔄 Ejecutándose - Página actual: ${book?.currentPage}, Total: ${book?.totalPages}, Idiomas: ${sourceBookLanguage} → ${currentBookLanguage}`);
+    
     if (!book || !book.pages || book.pages.length === 0 || isCurrentPageTranslating || isProactivelyTranslatingNextPage) {
+      console.log('[EFECTO-N+1] ❌ Saliendo - condiciones no cumplidas');
       return;
     }
 
@@ -505,20 +857,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     const nextPageNum = currentPageNum + 1;
 
     if (nextPageNum > book.totalPages) {
-      console.log('[PAGE_N+1_EFFECT] No next page to translate proactively.');
       setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
       return;
     }
 
     if (proactivelyTranslatedForPageNumber === nextPageNum && proactivelyTranslatedNextPageContent) {
-      console.log(`[PAGE_N+1_EFFECT] Page ${nextPageNum} already proactively translated.`);
       return;
     }
 
     // Si el idioma de visualización es el original o no hemos detectado aún, no necesitamos pre-traducir
     if (!bookLanguageDetected || currentBookLanguage === sourceBookLanguage) {
-      console.log('[PAGE_N+1_EFFECT] Source language matches display language or not detected yet, no proactive translation needed.');
+      console.log('[EFECTO-N+1] ⏩ Saliendo - mismos idiomas o no detectado');
       setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
       return;
@@ -527,20 +877,19 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     const nextPageOriginalContent = book.pages[nextPageNum - 1]?.content;
 
     if (!nextPageOriginalContent || nextPageOriginalContent.startsWith('[Contenido de la página') || nextPageOriginalContent.startsWith('[Procesando OCR para página')) {
-      console.log(`[PAGE_N+1_EFFECT] Next page ${nextPageNum} has placeholder content, not translating proactively.`);
       return;
     }
 
-    console.log(`[PAGE_N+1_EFFECT] Starting proactive translation for page ${nextPageNum} from ${sourceBookLanguage} to ${currentBookLanguage}.`);
+    console.log(`[EFECTO-N+1] 🌐 Traduciendo página ${nextPageNum} de ${sourceBookLanguage} a ${currentBookLanguage}`);
     setIsProactivelyTranslatingNextPage(true);
     translatePageText(nextPageOriginalContent, currentBookLanguage, sourceBookLanguage)
       .then(translated => {
-        console.log(`[PAGE_N+1_EFFECT] Proactive translation for page ${nextPageNum} done.`);
+        console.log(`[EFECTO-N+1] ✅ Página ${nextPageNum} traducida proactivamente`);
         setProactivelyTranslatedNextPageContent(translated);
         setProactivelyTranslatedForPageNumber(nextPageNum);
       })
       .catch(error => {
-        console.error(`[PAGE_N+1_EFFECT] Error proactively translating page ${nextPageNum}:`, error);
+        console.log('[EFECTO-N+1] ❌ Error traduciendo próxima página:', error);
         setProactivelyTranslatedNextPageContent(null);
         setProactivelyTranslatedForPageNumber(null);
       })
@@ -548,7 +897,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         setIsProactivelyTranslatingNextPage(false);
       });
 
-  }, [currentPageContentForDisplay, book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.totalPages, book?.pages, isCurrentPageTranslating, isProactivelyTranslatingNextPage, translatePageText, bookLanguageDetected]);
+  }, [book?.currentPage, currentBookLanguage, sourceBookLanguage, book?.totalPages, book?.pages, translatePageText, bookLanguageDetected]);
   
   // Actualizar allWords cuando currentPageContentForDisplay cambie
   useEffect(() => {
@@ -571,7 +920,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   // Limpiar traducciones proactivas si el idioma vuelve al original o el libro cambia
   useEffect(() => {
     if ((bookLanguageDetected && currentBookLanguage === sourceBookLanguage) || !book) {
-      console.log('[CLEANUP_EFFECT] Clearing proactive translations (language changed to source or no book).');
+      // Limpiar traducciones proactivas
       setProactivelyTranslatedNextPageContent(null);
       setProactivelyTranslatedForPageNumber(null);
     }
@@ -595,7 +944,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     return () => {
       if (book && book.id) {
         updateReadingProgress(book.id, book.currentPage);
-        console.log('Guardando progreso al salir del lector:', book.currentPage);
       }
     };
   }, [book]);
@@ -606,7 +954,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     if (book && book.id && book.currentPage > 0) {
       // Evitar actualizaciones durante la carga inicial
       if (!isLoading) {
-        console.log(`[PROGRESO] Actualizando página actual en DB: ${book.currentPage}`);
+        // Guardando progreso en DB
         updateReadingProgress(book.id, book.currentPage);
       }
     }
@@ -790,7 +1138,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     setShowSelectionMessage(true);
   };
 
-  // Reproducir audio de la traducción usando TTSService
+  // Reproducir audio de la traducción usando Supabase TTS
   const playTranslationAudio = async (language: 'en' | 'es' | string, textToPlay?: string) => {
     const textForAudio = textToPlay || (language === currentBookLanguage ? selectedText : translatedText);
     if (!textForAudio) return;
@@ -801,14 +1149,12 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       }
 
       setIsPlayingAudio(language);
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
       const langCodeForTTS = language === 'es' ? 'es' : currentBookLanguage;
-
-      if (apiKey) {
-        await TTSService.speakText(textForAudio, langCodeForTTS as 'en' | 'es'); 
-      } else {
-        TTSService.speakTextUsingWebSpeech(textForAudio, langCodeForTTS as 'en' | 'es');
-      }
+      const blob = await AudiobookService.generateSpeech(textForAudio, langCodeForTTS, 'nova');
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      await audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error al reproducir audio:', error);
     } finally {
@@ -896,19 +1242,25 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   // Navigation
   const handlePreviousPage = () => {
     if (book && book.currentPage > 1) {
+      setIsManuallyNavigating(true);
       goToPage(book.currentPage - 1);
       if (contentRef.current) {
         contentRef.current.scrollTop = 0;
       }
+      // Reset navigation flag after a short delay
+      setTimeout(() => setIsManuallyNavigating(false), 500);
     }
   };
 
   const handleNextPage = () => {
     if (book && book.currentPage < book.totalPages) {
+      setIsManuallyNavigating(true);
       goToPage(book.currentPage + 1);
       if (contentRef.current) {
         contentRef.current.scrollTop = 0;
       }
+      // Reset navigation flag after a short delay
+      setTimeout(() => setIsManuallyNavigating(false), 500);
     }
   };
 
@@ -969,8 +1321,6 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     );
   };
 
-  // Agregar un nuevo estado para controlar si el indicador de OCR está minimizado
-  const [ocrIndicatorMinimized, setOcrIndicatorMinimized] = useState(false);
   // Agregar estado para controlar la visibilidad del indicador de OCR procesado
   const [showOcrProcessedMessage, setShowOcrProcessedMessage] = useState(false);
 
@@ -997,86 +1347,7 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   }, [book]);
 
-  // Agregar efecto para minimizar automáticamente el popup de OCR después de 2 segundos
-  useEffect(() => {
-    if (book?.ocrInProgress && !ocrIndicatorMinimized) {
-      const autoMinimizeTimer = setTimeout(() => {
-        setOcrIndicatorMinimized(true);
-      }, 2000);
-      
-      return () => clearTimeout(autoMinimizeTimer);
-    }
-  }, [book?.ocrInProgress, ocrIndicatorMinimized]);
 
-  // Modificar el componente OcrProgressIndicator para incluir un botón para minimizar
-  const OcrProgressIndicator = ({ book }: { book: Book }) => {
-    // Si el libro no está en proceso de OCR, no mostrar nada
-    if (!book?.ocrInProgress) return null;
-    
-    // Calcular el porcentaje de progreso con verificación de null/undefined
-    const ocrProgress = book.ocrProgress || 0;
-    const ocrTotal = book.ocrTotal || 1; // Evitar dividir por cero
-    const progressPercent = Math.round((ocrProgress / ocrTotal) * 100);
-    
-    if (ocrIndicatorMinimized) {
-      // Versión minimizada - mover a la parte inferior central pero más arriba
-      return (
-        <div 
-          onClick={() => setOcrIndicatorMinimized(false)}
-          className="fixed bottom-28 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-800 text-white px-3 py-2 rounded-lg shadow-lg flex items-center z-[200] cursor-pointer hover:bg-blue-700 transition-all"
-        >
-          <Loader2 className="animate-spin h-4 w-4 mr-2" />
-          <span className="text-xs font-medium">OCR: {progressPercent}%</span>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-[90%] sm:w-[320px] overflow-hidden">
-        {/* Encabezado */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-4 py-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center">
-            <Loader2 className="animate-spin h-4 w-4 mr-2" />
-            OCR en progreso
-          </h3>
-          <button
-            onClick={() => setOcrIndicatorMinimized(true)}
-            className="text-white/80 hover:text-white p-1 rounded flex items-center justify-center"
-            title="Minimizar"
-          >
-            <span className="font-bold text-lg leading-none">-</span>
-          </button>
-        </div>
-        
-        {/* Contenido */}
-        <div className="p-4">
-          {/* Información */}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-              Páginas procesadas:
-            </span>
-            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full">
-              {book.ocrProgress} de {book.ocrTotal}
-            </span>
-          </div>
-          
-          {/* Barra de progreso */}
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-3">
-            <div 
-              className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            ></div>
-          </div>
-          
-          {/* Mensaje */}
-          <p className="text-xs text-gray-600 dark:text-gray-400 text-center mt-1">
-            Puedes continuar leyendo mientras se completa el OCR.
-            <br/>Las páginas se actualizarán automáticamente.
-          </p>
-        </div>
-      </div>
-    );
-  };
 
   // Antes del return principal del componente Reader
   // Agregar un indicador del progreso de OCR en el título
@@ -1086,24 +1357,31 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       const ocrProgress = book.ocrProgress || 0;
       const ocrTotal = book.ocrTotal;
       const percent = Math.round((ocrProgress / ocrTotal) * 100);
-      document.title = `OCR ${percent}% - ${book.title} | Lexingo`;
+      document.title = 'Lexingo AI';
     } else if (book) {
-      document.title = `${book.title} | Lexingo`;
+      document.title = 'Lexingo AI';
     } else {
-      document.title = 'Lexingo';
+      document.title = 'Lexingo AI';
     }
     
     return () => {
-      document.title = 'Lexingo';
+      document.title = 'Lexingo AI';
     };
   }, [book]);
 
   // State for AI Chat Modal
   const [showAIChatModal, setShowAIChatModal] = useState(false);
+  
+  // Estado para mostrar panel de configuración del lector
+  const [showReaderSettings, setShowReaderSettings] = useState(false);
+  
 
   // Estados para el popover de selección de idioma
   const [isLanguagePopoverOpen, setIsLanguagePopoverOpen] = useState(false);
   const languageButtonRef = useRef<HTMLButtonElement>(null);
+  
+  // Estados para el popover de menú de usuario
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const languageOptions = useMemo(() => [
     { code: "es", name: getLanguageName("es") }, // Agregado español al inicio
@@ -1141,11 +1419,27 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     langRole,
   ]);
 
-  // Efecto para cargar el idioma de visualización predeterminado (inglés) una vez al cargar
-  useEffect(() => {
-    // Inicializar inglés como idioma de visualización por defecto
-    setCurrentBookLanguage('en');
-  }, []); // Ejecutar solo una vez al montar
+  // Configuración de floating UI para menú de usuario
+  const { refs: userMenuRefs, floatingStyles: userMenuFloatingStyles, context: userMenuContext } = useFloating({
+    open: isUserMenuOpen,
+    onOpenChange: setIsUserMenuOpen,
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    placement: 'bottom-end',
+    whileElementsMounted: autoUpdate,
+  });
+
+  const userMenuClick = useClick(userMenuContext);
+  const userMenuDismiss = useDismiss(userMenuContext);
+  const userMenuRole = useRole(userMenuContext, { role: 'menu' });
+
+  const { getReferenceProps: getUserMenuReferenceProps, getFloatingProps: getUserMenuFloatingProps } = useInteractions([
+    userMenuClick,
+    userMenuDismiss,
+    userMenuRole,
+  ]);
+
+  // ELIMINADO: Ya no forzamos inglés como predeterminado
+  // El idioma se inicializa automáticamente desde localStorage en el useState
 
   // Cargar idioma preferido del usuario al montar el componente
   useEffect(() => {
@@ -1160,12 +1454,8 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             .single();
             
           if (!error && data && data.preferred_language) {
-            console.log('Idioma cargado desde Supabase:', data.preferred_language);
-            // Solo establecer el idioma si no hemos detectado el idioma del libro aún
-            // Esto evita conflictos con la traducción automática
-            if (!bookLanguageDetected) {
-              setCurrentBookLanguage(data.preferred_language);
-            }
+            // TEMPORAL: Guardar idioma preferido sin cambiar el display hasta que se procese
+            // No cambiar currentBookLanguage aquí - se maneja en checkAndAutoTranslate
           }
         }
       } catch (error) {
@@ -1206,54 +1496,55 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
     }
   };
 
-  // Nuevo efecto que verifica si la página actual está vacía después de cargar el libro
+  // Verificar páginas vacías solo una vez por libro
   useEffect(() => {
-    // Solo ejecutar una vez cuando el libro se ha cargado inicialmente
-    if (book && !isLoading) {
-      console.log('[VERIFICACIÓN] Comprobando si la página actual está vacía');
+    if (book && !isLoading && !hasCheckedPages) {
+      // Marcar como verificado inmediatamente para evitar bucle
+      setHasCheckedPages(true);
       
+      // Verificar si el libro tiene páginas válidas
+      if (!book.pages || book.pages.length === 0) {
+        return;
+      }
+
       const currentPageIndex = book.currentPage - 1;
-      if (currentPageIndex < 0 || currentPageIndex >= book.pages.length) {
-        console.log('[VERIFICACIÓN] Índice de página actual fuera de rango:', currentPageIndex);
+      const actualTotalPages = book.pages.length;
+      
+      if (currentPageIndex < 0 || currentPageIndex >= actualTotalPages) {
+        // Buscar primera página válida
+        const firstValidPage = book.pages.findIndex(page => page?.content && page.content.trim().length > 0);
+        if (firstValidPage >= 0) {
+          goToPage(firstValidPage + 1);
+        }
         return;
       }
       
       const currentPageContent = book.pages[currentPageIndex]?.content;
       if (!currentPageContent || currentPageContent.trim().length === 0) {
-        console.log('[VERIFICACIÓN] La página actual está vacía, buscando la primera página con contenido');
-        
-        // Buscar la primera página no vacía después de la actual
-        let nextValidPage = book.currentPage + 1;
-        while (nextValidPage <= book.totalPages) {
-          const nextPageContent = book.pages[nextValidPage - 1]?.content;
+        // Buscar página válida hacia adelante
+        let nextValidPage = currentPageIndex + 1;
+        while (nextValidPage < actualTotalPages) {
+          const nextPageContent = book.pages[nextValidPage]?.content;
           if (nextPageContent && nextPageContent.trim().length > 0) {
-            console.log(`[VERIFICACIÓN] Encontrada página válida: ${nextValidPage}`);
-            goToPage(nextValidPage);
-            break;
+            goToPage(nextValidPage + 1);
+            return;
           }
           nextValidPage++;
         }
         
-        if (nextValidPage > book.totalPages) {
-          console.log('[VERIFICACIÓN] No se encontraron páginas válidas después de la actual');
-          
-          // Alternativamente, buscar hacia atrás
-          let prevValidPage = book.currentPage - 1;
-          while (prevValidPage >= 1) {
-            const prevPageContent = book.pages[prevValidPage - 1]?.content;
-            if (prevPageContent && prevPageContent.trim().length > 0) {
-              console.log(`[VERIFICACIÓN] Encontrada página válida anterior: ${prevValidPage}`);
-              goToPage(prevValidPage);
-              break;
-            }
-            prevValidPage--;
+        // Buscar hacia atrás
+        let prevValidPage = currentPageIndex - 1;
+        while (prevValidPage >= 0) {
+          const prevPageContent = book.pages[prevValidPage]?.content;
+          if (prevPageContent && prevPageContent.trim().length > 0) {
+            goToPage(prevValidPage + 1);
+            return;
           }
+          prevValidPage--;
         }
-      } else {
-        console.log('[VERIFICACIÓN] La página actual tiene contenido válido');
       }
     }
-  }, [book, isLoading, goToPage]);
+  }, [book?.id, isLoading, hasCheckedPages]); // Usar book.id en lugar de book completo
 
   if (!book) {
     return (
@@ -1264,11 +1555,11 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             No hay libro seleccionado
           </h2>
           <button
-            onClick={() => navigate('/books')}
+            onClick={() => navigate(-1)}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700"
           >
-            <Home className="mr-2 h-5 w-5" />
-            Volver a la biblioteca
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Volver atrás
           </button>
         </div>
       </div>
@@ -1287,19 +1578,60 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
   return (
     <div 
       ref={readerRef}
-      className={`min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-white flex flex-col ${isFullScreen ? 'reader-fullscreen' : ''}`}
+      className={`h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-white flex flex-col overflow-hidden reader-main-container ${isFullScreen ? 'reader-fullscreen' : ''}`}
       onMouseMove={() => setShowControls(true)}
     >
-      {/* Header principal - Solo visible cuando NO estamos en modo pantalla completa */}
-      {!isFullScreen && <div className="h-16"></div>}
-      
-      {/* División/separación entre header principal y barra del Reader */}
+      {/* Header con logo y perfil solo cuando NO está en pantalla completa */}
       {!isFullScreen && (
-        <div className="h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent opacity-50"></div>
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50">
+          <div className="flex items-center justify-between h-16 px-4">
+            {/* Logo - centrado */}
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center">
+              <img 
+                src={theme === 'dark' ? '/img/lexingo_white.png' : '/img/lexingo_black.png'} 
+                alt="Lexingo" 
+                className="h-11 hover:opacity-80 transition-opacity cursor-pointer"
+                onClick={() => navigate('/')}
+              />
+            </div>
+
+            {/* Perfil de usuario - siempre a la derecha */}
+            <div className="ml-auto flex items-center relative z-[999999]">
+              <button 
+                ref={userMenuRefs.setReference}
+                {...getUserMenuReferenceProps()}
+                className="focus:outline-none hover:opacity-80 transition-opacity"
+              >
+                {avatarUrl ? (
+                  <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-200 dark:border-purple-800">
+                    <img
+                      src={avatarUrl}
+                      alt="Usuario"
+                      className="w-full h-full object-cover"
+                      onError={() => setAvatarUrl(null)}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center text-white font-medium">
+                    {userInitials}
+                  </div>
+                )}
+              </button>
+              
+            </div>
+          </div>
+        </div>
       )}
       
-      {/* Barra de navegación de lectura */}
-      <div className={`reader-navigation-bar fixed ${!isFullScreen ? 'md:top-16 top-16' : 'top-0'} left-0 right-0 z-[50] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b-2 border-purple-500 dark:border-purple-700 shadow-md`}>
+      {/* Línea divisoria morada con efecto brillante - debajo del header principal */}
+      {!isFullScreen && (
+        <div className="fixed top-16 left-0 right-0 z-[59] header-divider h-0.5 w-full"></div>
+      )}
+      
+      {/* Barra de navegación de lectura - FIJO */}
+      <div className={`reader-navigation-bar fixed ${
+        !isFullScreen ? 'top-[4.125rem]' : 'top-0'
+      } left-0 right-0 z-[50] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-300 dark:border-gray-600 shadow-md`}>
         <div className="max-w-3xl mx-auto px-4 py-2 flex items-center space-x-2 sm:space-x-3">
           {/* Botón izquierdo: volver o salir */}
           {isFullScreen ? (
@@ -1312,15 +1644,45 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             </button>
           ) : (
             <button
-              onClick={() => navigate('/books')}
+              onClick={() => navigate(-1)}
               className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
-              aria-label="Volver a la biblioteca"
+              aria-label="Volver atrás"
             >
-              <Home size={18} />
+              <ArrowLeft size={18} />
             </button>
           )}
 
           {/* Separador Añadido */}
+          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
+          {/* Imagen circular del libro */}
+          <div className="flex-shrink-0">
+            {book.coverUrl ? (
+              <img 
+                src={book.coverUrl} 
+                alt={`Portada de ${book.title}`}
+                className="w-8 h-8 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600"
+                onError={(e) => {
+                  // Fallback si la imagen no carga
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center border-2 border-gray-300 dark:border-gray-600">
+                <span className="text-white text-xs font-bold">
+                  {book.title.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* Información central: Título del Libro */}
+          <div className="flex-grow text-center overflow-hidden px-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" title={book.title}>
+              {book.title}
+            </span>
+          </div>
+
+          {/* Separador */}
           <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
 
           {/* Botón Selector de Idioma Circular */}
@@ -1349,10 +1711,44 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                       key={lang.code}
                       role="option"
                       aria-selected={currentBookLanguage === lang.code}
-                      onClick={() => {
-                        setCurrentBookLanguage(lang.code);
-                        savePreferredLanguage(lang.code); // Guardar la preferencia
+                      onClick={async () => {
+                        console.log(`[CAMBIO-IDIOMA] Usuario cambió idioma a: ${lang.code}`);
+                        console.log(`[CAMBIO-IDIOMA] Idioma fuente del libro: ${sourceBookLanguage}`);
+                        
+                        // Cerrar el popover inmediatamente
                         setIsLanguagePopoverOpen(false);
+                        
+                        // Guardar la nueva preferencia
+                        await savePreferredLanguage(lang.code);
+                        
+                        // IMPORTANTE: Actualizar display_language en la base de datos
+                        if (book?.id) {
+                          try {
+                            const { error } = await supabase
+                              .from('books')
+                              .update({ display_language: lang.code })
+                              .eq('id', book.id);
+                              
+                            if (error) {
+                              console.error('[CAMBIO-IDIOMA] Error al actualizar display_language:', error);
+                            } else {
+                              console.log(`[CAMBIO-IDIOMA] ✅ display_language actualizado a ${lang.code} en BD`);
+                            }
+                          } catch (error) {
+                            console.error('[CAMBIO-IDIOMA] Error en actualización BD:', error);
+                          }
+                        }
+                        
+                        // Limpiar cache y referencia para forzar nueva traducción
+                        console.log('[CAMBIO-IDIOMA] 🧹 Limpiando cache por cambio de idioma');
+                        setCurrentPageContentForDisplay(null);
+                        setProactivelyTranslatedNextPageContent(null);
+                        setProactivelyTranslatedForPageNumber(null);
+                        lastDisplayedPageAndLangRef.current = { page: 0, lang: '' };
+                        
+                        // Cambiar idioma (esto activará los efectos de traducción)
+                        console.log(`[CAMBIO-IDIOMA] Actualizando currentBookLanguage de ${currentBookLanguage} a ${lang.code}`);
+                        setCurrentBookLanguage(lang.code);
                       }}
                       className={`w-full text-left px-4 py-2 text-sm font-medium flex items-center justify-between
                         ${currentBookLanguage === lang.code 
@@ -1375,25 +1771,8 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           {/* Separador */}
           <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
           
-          {/* Información central: Título del Libro */}
-          <div className="flex-grow text-center overflow-hidden px-2">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" title={book.title}>
-              {book.title}
-            </span>
-          </div>
-
-          {/* Separador */}
-          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700 opacity-50 flex-shrink-0"></div>
-
-          {/* Controles de tema y pantalla completa */}
-          <div className="flex items-center space-x-2 flex-shrink-0">
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-full text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-              aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
+          {/* Control de pantalla completa */}
+          <div className="flex items-center flex-shrink-0">
             <button
               onClick={toggleFullScreen}
               className="p-1.5 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
@@ -1403,6 +1782,8 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             </button>
           </div>
         </div>
+        {/* Línea divisoria gris simple */}
+        <div className="h-0.5 simple-divider w-full"></div>
       </div>
 
       {/* Mensaje de ayuda */}
@@ -1475,19 +1856,24 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
 
       {/* OCR Indicator */}
       <OcrIndicator isVisible={showOcrProcessedMessage && !!book?.processedWithOcr && !book?.ocrInProgress} />
-      <OcrProgressIndicator book={book} />
 
-      {/* Contenido principal Refactorizado */}
+      {/* Contenido principal con scroll independiente */}
       <div 
-        className={`flex-grow overflow-y-auto p-4 ${
-          !isFullScreen 
-            ? 'pt-6 pb-32 md:pt-4 md:pb-36' // Reducir el padding superior para tener menos espacio
-            : 'pt-14 pb-16' // Aumentado de pt-4 a pt-14
-        }`} 
+        className="flex-1 overflow-y-auto reader-content-area"
         ref={contentRef}
+        style={{
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          paddingBottom: 'calc(65px + env(safe-area-inset-bottom, 0px))' // Espacio para la barra de controles más alta
+        }}
       >
         <div 
-          className="max-w-3xl mx-auto text-justify px-2"
+          className={`max-w-3xl mx-auto text-justify px-6 reader-content-inner ${
+            !isFullScreen 
+              ? 'pt-32 pb-24 md:pt-36 md:pb-36' // Padding normal para header + navegación
+              : 'pt-24 pb-20' // Padding en fullscreen
+          }`}
           style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
         >
           {isCurrentPageTranslating ? (
@@ -1510,46 +1896,65 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
               </div>
             )
           ) : currentPageContentForDisplay ? (
-            allWords.map((word, idx) => (
-              <React.Fragment key={`${word}-${idx}`}>
-                <span
-                  className={`
-                    word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
-                    border mx-[2px] my-[1px]
-                    ${isSelectingTextRange 
-                      ? startWordIndex === idx 
-                        ? 'bg-purple-600 text-white border-purple-700'
-                        : startWordIndex !== null && endWordIndex !== null && idx >= startWordIndex && idx <= endWordIndex
-                          ? 'bg-purple-100 dark:bg-purple-900/40 text-gray-800 dark:text-white border-purple-200 dark:border-purple-800'
-                          : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60'
-                      : idx === selectedWordIndex && isTooltipOpen
-                        ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' 
-                        : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/30'
-                    }
-                  `}
-                  onClick={(e) => handleWordClick({ text: word, index: idx }, e, idx)}
-                  title={!isSelectingTextRange ? `Traducir "${word}" del ${getLanguageName(currentBookLanguage)} al español` : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
-                >
-                  {word}
-                </span>
-                {' '}
-              </React.Fragment>
-            ))
+            <div className="relative">
+              {/* Renderizado con seguimiento karaoke durante reproducción */}
+              {audiobookState.isPlaying && audiobookState.currentText === currentPageContentForDisplay ? (
+                <div className="relative z-10">
+                  <KaraokeText
+                    text={currentPageContentForDisplay}
+                    currentWordIndex={audiobookState.currentWordIndex}
+                    isPlaying={audiobookState.isPlaying}
+                    className="leading-relaxed"
+                    onWordClick={(wordIndex) => {
+                      audiobookControls.jumpToWord(wordIndex);
+                    }}
+                  />
+                </div>
+              ) : null}
+              
+              {/* Renderizado normal para selección de palabras */}
+              <div className={`${audiobookState.isPlaying && audiobookState.currentText === currentPageContentForDisplay ? 'invisible absolute inset-0' : ''}`}>
+                {allWords.map((word, idx) => (
+                  <React.Fragment key={`${word}-${idx}`}>
+                    <span
+                      className={`
+                        word inline-block cursor-pointer px-1 py-0.5 rounded transition-colors 
+                        border mx-[2px] my-[1px]
+                        ${isSelectingTextRange 
+                          ? startWordIndex === idx 
+                            ? 'bg-purple-600 text-white border-purple-700'
+                            : startWordIndex !== null && endWordIndex !== null && idx >= startWordIndex && idx <= endWordIndex
+                              ? 'bg-purple-100 dark:bg-purple-900/40 text-gray-800 dark:text-white border-purple-200 dark:border-purple-800'
+                              : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60'
+                          : idx === selectedWordIndex && isTooltipOpen
+                            ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300 ring-opacity-50 dark:ring-blue-400 dark:ring-opacity-50' 
+                            : 'bg-gray-50 dark:bg-gray-800/30 text-gray-800 dark:text-white border-gray-200 dark:border-gray-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                        }
+                      `}
+                      onClick={(e) => handleWordClick({ text: word, index: idx }, e, idx)}
+                      title={!isSelectingTextRange ? `Traducir "${word}" del ${getLanguageName(currentBookLanguage)} al español` : startWordIndex === null ? "Selecciona como inicio" : "Selecciona como fin"}
+                    >
+                      {word}
+                    </span>
+                    {' '}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
           ) : (
             // Si no hay contenido para mostrar, verificar el estado de carga o si la página está vacía
             isLoading ? (
               <BookLoadingIndicator />
-            ) : book && book.pages && book.currentPage <= book.pages.length ? (
+            ) : book && book.pages && book.pages.length > 0 && book.currentPage <= book.pages.length ? (
               // Verificar si la página actual está realmente vacía
               (() => {
                 const currentPageContent = book.pages[book.currentPage - 1]?.content || '';
                 const isEmpty = !currentPageContent || currentPageContent.trim().length === 0;
                 
-                console.log(`[RENDERIZADO] Verificando contenido de página ${book.currentPage}. Vacía: ${isEmpty}. Longitud: ${currentPageContent.length}`);
+                // Verificar si página está vacía
                 
                 if (isEmpty) {
                   // Si la página está vacía, mover automáticamente a la siguiente con contenido
-                  console.log('[RENDERIZADO] Página actual vacía, mostrando indicador de carga mientras se busca una página con contenido');
                   
                   // Usar setTimeout para que no bloquee el renderizado
                   setTimeout(() => {
@@ -1557,16 +1962,16 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                     while (nextPageToTry <= book.totalPages) {
                       const nextContent = book.pages[nextPageToTry - 1]?.content || '';
                       if (nextContent && nextContent.trim().length > 0) {
-                        console.log(`[RENDERIZADO] Navegando automáticamente a página ${nextPageToTry} con contenido`);
+                        // Navegar a página con contenido
                         goToPage(nextPageToTry);
                         break;
                       }
                       nextPageToTry++;
                     }
                     
-                    // Si no se encontró ninguna página con contenido, mostrar mensaje
+                    // Si no se encontró ninguna página con contenido
                     if (nextPageToTry > book.totalPages) {
-                      console.log('[RENDERIZADO] No se encontraron páginas con contenido');
+                      // No hay páginas válidas
                     }
                   }, 0);
                   
@@ -1575,6 +1980,21 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                   return <div className="p-4 text-center text-gray-500 dark:text-gray-400">No se pudo cargar el contenido en esta página.</div>;
                 }
               })()
+            ) : book && book.pages && book.pages.length === 0 ? (
+              <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                <div className="mb-4">
+                  <XCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">Libro sin contenido</h3>
+                  <p className="text-sm">Este libro no tiene contenido válido. Es posible que haya ocurrido un error durante la carga.</p>
+                </div>
+                <button
+                  onClick={() => navigate(-1)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Volver atrás
+                </button>
+              </div>
             ) : (
               <div className="p-4 text-center text-gray-500 dark:text-gray-400">No hay contenido disponible en esta página.</div>
             )
@@ -1582,9 +2002,19 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
         </div>
       </div>
 
-      {/* Barra de control inferior fija */}
-      <div className="reader-controls fixed bottom-[56px] sm:bottom-16 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 p-2 z-[100] transition-opacity duration-300 shadow-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-1">
+      {/* Barra de control inferior fija - completamente abajo */}
+      <div 
+        className="reader-controls fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 z-[100] transition-opacity duration-300 shadow-md"
+        style={{ 
+          paddingTop: '8px',
+          paddingLeft: '4px', 
+          paddingRight: '4px',
+          paddingBottom: '8px',
+          marginBottom: '0px',
+          bottom: '0px'
+        }}
+      >
+        <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-2">
           {/* Botones de utilidad */}
           <div className="flex items-center space-x-2">
             {/* Botón de traducción de texto MODIFICADO */}
@@ -1603,15 +2033,15 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             {/* Línea divisoria vertical */}
             <div className="h-5 w-px bg-gray-300/60 dark:bg-gray-700/60"></div>
             
-            {/* Botón de Lexingo AI NUEVO */}
+            {/* Botón de Lexingo AI - Chat general */}
             <button
               onClick={() => {
-                const currentPageContent = book?.pages[book.currentPage - 1]?.content || '';
-                setAiChatContextText(currentPageContent);
+                // NO pasar contexto para chat general
+                setAiChatContextText('');
                 setShowAIChatModal(true); 
               }}
               className="p-0.5 rounded-full border-2 border-teal-400 hover:opacity-80 flex items-center focus:outline-none"
-              title="Consultar con Lexingo AI sobre esta página"
+              title="Chat general con Lexingo AI"
             >
               <img src="/img/icono_lexingo.png" alt="Lexingo AI" className="w-5 h-5 rounded-full" />
             </button>
@@ -1646,24 +2076,15 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           {/* Línea divisoria vertical */}
           <div className="h-6 w-px bg-gray-300/60 dark:bg-gray-700/60 mx-2"></div>
 
-          {/* Sección de zoom */}
-          <div className="flex items-center">
+          {/* Sección de configuración */}
+          <div className="flex items-center space-x-2">
+            {/* Botón de configuración */}
             <button
-              onClick={decreaseFontSize}
-              disabled={fontSize <= 12}
-              className="p-1.5 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="Reducir tamaño de fuente"
+              onClick={() => setShowReaderSettings(!showReaderSettings)}
+              className="p-1.5 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              aria-label="Configuración del lector"
             >
-              <Minus size={16} />
-            </button>
-            <span className="mx-2 text-sm font-medium text-gray-700 dark:text-gray-300">{fontSize}</span>
-            <button
-              onClick={increaseFontSize}
-              disabled={fontSize >= 24}
-              className="p-1.5 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="Aumentar tamaño de fuente"
-            >
-              <Plus size={16} />
+              <Settings size={16} />
             </button>
           </div>
         </div>
@@ -1713,9 +2134,19 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             {/* Texto original con botón de audio al lado */}
             <div className="mb-4">
               <div className="flex items-start justify-between">
-                <p className="font-medium text-gray-200 text-sm flex-1 mr-2">
-                  {selectedText}
-                </p>
+                <div className="flex-1 mr-2">
+                  <KaraokeText
+                    text={selectedText}
+                    currentWordIndex={audiobookState.currentText === selectedText ? audiobookState.currentWordIndex : -1}
+                    isPlaying={audiobookState.isPlaying && audiobookState.currentText === selectedText}
+                    className="font-medium text-gray-200 text-sm"
+                    onWordClick={(wordIndex) => {
+                      if (audiobookState.currentText === selectedText) {
+                        audiobookControls.jumpToWord(wordIndex);
+                      }
+                    }}
+                  />
+                </div>
                 <button
                   onClick={isPlayingAudio === currentBookLanguage ? stopAudio : () => playTranslationAudio(currentBookLanguage, selectedText)}
                   className="w-5 h-5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 flex items-center justify-center transition-all duration-200 hover:scale-110 flex-shrink-0"
@@ -1761,8 +2192,9 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                 </button>
               </div>
               
-              {/* Botón de consulta IA centrado y más pequeño */}
-              <div className="flex justify-center mt-2">
+              {/* Botones de acción: IA y Audiolibro */}
+              <div className="flex justify-center items-center gap-3 mt-2">
+                {/* Botón de consulta IA */}
                 <button
                   onClick={() => {
                     if (selectedText) {
@@ -1776,6 +2208,18 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
                   <Sparkles size={10} />
                   <span>Consultar IA</span>
                 </button>
+
+                {/* Controles de audiolibro */}
+                <div className="flex items-center space-x-2 px-2.5 py-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-400/30 rounded-full">
+                  <Volume2 size={10} className="text-orange-400" />
+                  <AudiobookControls
+                    state={audiobookState}
+                    controls={audiobookControls}
+                    currentText={selectedText || ''}
+                    language={currentBookLanguage}
+                    className="scale-90"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1783,16 +2227,179 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
       )}
 
       {/* AI Chat Modal */}
-      {showAIChatModal && aiChatContextText && (
+      {showAIChatModal && (
         <AIChatModal 
           isOpen={showAIChatModal}
           onClose={() => {
             setShowAIChatModal(false);
             setAiChatContextText(''); // Limpiar contexto al cerrar
           }}
-          initialText={aiChatContextText}
+          initialText={aiChatContextText || ''} // Permitir chat sin contexto
         />
       )}
+
+      {/* Panel de configuración del lector */}
+      {showReaderSettings && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[20000] p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowReaderSettings(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-gray-700"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                Configuración del Lector
+              </h3>
+              <button 
+                onClick={() => setShowReaderSettings(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-full"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Tamaño de fuente */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Tamaño de fuente
+                </label>
+                <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
+                  <button
+                    onClick={decreaseFontSize}
+                    disabled={fontSize <= 12}
+                    className="p-2 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Reducir tamaño de fuente"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg font-medium text-gray-700 dark:text-gray-300 min-w-[3ch] text-center">
+                      {fontSize}
+                    </span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">px</span>
+                  </div>
+                  
+                  <button
+                    onClick={increaseFontSize}
+                    disabled={fontSize >= 24}
+                    className="p-2 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Aumentar tamaño de fuente"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tema */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Tema
+                </label>
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center justify-between bg-gray-100 dark:bg-gray-700 rounded-lg p-3 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {theme === 'light' ? 'Modo claro' : 'Modo oscuro'}
+                  </span>
+                  <div className="text-gray-600 dark:text-gray-400">
+                    {theme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
+                  </div>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popover del menú de usuario - Posicionado globalmente */}
+      {isUserMenuOpen && (
+        <FloatingFocusManager context={userMenuContext} modal={false}>
+          <div
+            ref={userMenuRefs.setFloating}
+            style={{...userMenuFloatingStyles, zIndex: 999999}}
+            {...getUserMenuFloatingProps()}
+            className="fixed z-[999999] bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden py-1 w-48 focus:outline-none"
+          >
+            {/* Libros */}
+            <button
+              onClick={() => {
+                setIsUserMenuOpen(false);
+                navigate('/');
+              }}
+              className="w-full text-left px-4 py-3 text-sm flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <Home size={16} className="text-purple-600 dark:text-purple-400" />
+              <span className="text-gray-700 dark:text-gray-300">Libros</span>
+            </button>
+
+            {/* Mi Cuenta */}
+            <button
+              onClick={() => {
+                setIsUserMenuOpen(false);
+                navigate('/profile');
+              }}
+              className="w-full text-left px-4 py-3 text-sm flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <div className="w-4 h-4 rounded-full bg-blue-600 dark:bg-blue-400 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-white">{userInitials.charAt(0)}</span>
+              </div>
+              <span className="text-gray-700 dark:text-gray-300">Mi Cuenta</span>
+            </button>
+
+            {/* Mi Suscripción */}
+            <button
+              onClick={() => {
+                setIsUserMenuOpen(false);
+                navigate('/profile');
+              }}
+              className="w-full text-left px-4 py-3 text-sm flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <Sparkles size={16} className="text-green-600 dark:text-green-400" />
+              <span className="text-gray-700 dark:text-gray-300">Mi Suscripción</span>
+            </button>
+
+            <div className="h-px bg-gray-200 dark:bg-gray-600 my-1"></div>
+
+            {/* Cerrar Sesión */}
+            <button
+              onClick={async () => {
+                setIsUserMenuOpen(false);
+                try {
+                  await supabase.auth.signOut();
+                  navigate('/');
+                } catch (error) {
+                  console.error('Error cerrando sesión:', error);
+                }
+              }}
+              className="w-full text-left px-4 py-3 text-sm flex items-center space-x-3 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <ArrowLeft size={16} className="text-red-600 dark:text-red-400" />
+              <span className="text-red-600 dark:text-red-400">Cerrar Sesión</span>
+            </button>
+          </div>
+        </FloatingFocusManager>
+      )}
+
+      {/* Componente de debug de audio */}
+      <AudiobookDebugInfo
+        isVisible={showAudioDebug && audiobookState.isPlaying}
+        currentWordIndex={audiobookState.currentWordIndex}
+        totalWords={audiobookState.currentText ? audiobookState.currentText.split(/\s+/).length : 0}
+        currentTime={audiobookState.currentTime}
+        duration={audiobookState.duration}
+        usePreciseSync={audiobookState.usePreciseSync}
+        language={currentBookLanguage}
+      />
 
       {/* Estilos de scrollbar y animaciones */}
       <style>{`
@@ -1812,47 +2419,58 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           animation: bounce-slow 2s infinite ease-in-out;
         }
         
-        /* Estilo mejorado para scrollbar - Modo claro */
-        .reader-fullscreen::-webkit-scrollbar,
-        div::-webkit-scrollbar {
+        /* 💜 SCROLLBAR MORADA - Lexingo Reader */
+        .reader-content-area::-webkit-scrollbar {
           width: 10px;
+          background: transparent;
         }
         
-        .reader-fullscreen::-webkit-scrollbar-track,
-        div::-webkit-scrollbar-track {
-          background: rgba(243, 244, 246, 0.8);
-          border-radius: 10px;
+        .reader-content-area::-webkit-scrollbar-track {
+          background: rgba(139, 69, 193, 0.1);
+          border-radius: 8px;
+          border: 1px solid rgba(139, 69, 193, 0.2);
         }
         
-        .reader-fullscreen::-webkit-scrollbar-thumb,
-        div::-webkit-scrollbar-thumb {
-          background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
-          border-radius: 10px;
-          border: 2px solid rgba(243, 244, 246, 0.8);
+        .reader-content-area::-webkit-scrollbar-thumb {
+          background: #8b5cf6;
+          border-radius: 8px;
+          border: 1px solid #7c3aed;
+          box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
           transition: all 0.3s ease;
         }
         
-        .reader-fullscreen::-webkit-scrollbar-thumb:hover,
-        div::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(135deg, #9333ea 0%, #6b21a8 100%);
+        .reader-content-area::-webkit-scrollbar-thumb:hover {
+          background: #a855f7;
+          box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+          transform: scaleX(1.1);
         }
         
-        /* Estilo de scrollbar para modo oscuro */
-        .dark .reader-fullscreen::-webkit-scrollbar-track,
-        .dark div::-webkit-scrollbar-track {
-          background: rgba(31, 41, 55, 0.8);
-          border-radius: 10px;
+        .reader-content-area::-webkit-scrollbar-thumb:active {
+          background: #9333ea;
+          box-shadow: 0 0 20px rgba(147, 51, 234, 0.7);
         }
         
-        .dark .reader-fullscreen::-webkit-scrollbar-thumb,
-        .dark div::-webkit-scrollbar-thumb {
-          background: linear-gradient(135deg, #9333ea 0%, #6b21a8 100%);
-          border: 2px solid rgba(31, 41, 55, 0.8);
+        /* 🌙 MODO OSCURO - Scrollbar morada */
+        .dark .reader-content-area::-webkit-scrollbar-track {
+          background: rgba(139, 69, 193, 0.15);
+          border: 1px solid rgba(139, 69, 193, 0.3);
         }
         
-        .dark .reader-fullscreen::-webkit-scrollbar-thumb:hover,
-        .dark div::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+        .dark .reader-content-area::-webkit-scrollbar-thumb {
+          background: #7c3aed;
+          border: 1px solid #6b21a8;
+          box-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+        }
+        
+        .dark .reader-content-area::-webkit-scrollbar-thumb:hover {
+          background: #8b5cf6;
+          box-shadow: 0 0 18px rgba(139, 92, 246, 0.6);
+          transform: scaleX(1.1);
+        }
+        
+        .dark .reader-content-area::-webkit-scrollbar-thumb:active {
+          background: #a855f7;
+          box-shadow: 0 0 25px rgba(168, 85, 247, 0.8);
         }
         
         .reader-fullscreen {
@@ -1879,19 +2497,30 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           z-index: 50 !important;
         }
         
+        /* Forzar que no haya espacios en el viewport */
+        body, html {
+          padding-bottom: 0 !important;
+          margin-bottom: 0 !important;
+        }
+        
         /* Asegurar que la barra de controles esté por encima de la navegación móvil pero por debajo del header */
         .reader-controls {
-          bottom: 56px !important;
+          position: fixed !important;
+          bottom: 0 !important;
           width: 100% !important;
           left: 0 !important;
           right: 0 !important;
-          z-index: 40 !important;
+          z-index: 100 !important;
+          padding-bottom: 0 !important;
+          margin-bottom: 0 !important;
+          height: auto !important;
+          min-height: auto !important;
         }
         /* Ajustes para pantallas más grandes */
         @media screen and (min-width: 640px) {
           .reader-controls {
             bottom: 0 !important;
-            padding-bottom: 16px !important;
+            padding-bottom: 0 !important;
           }
         }
         /* Para pantallas pequeñas */
@@ -1900,6 +2529,70 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
             padding-bottom: 0;
           }
         }
+        
+        /* MEJORAS DE SCROLLING PARA MÓVILES */
+        @media screen and (max-width: 768px) {
+          /* Área de contenido optimizada para móvil */
+          .reader-content-area {
+            -webkit-overflow-scrolling: touch;
+            overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            /* Prevent scroll chaining */
+            overscroll-behavior: contain;
+            /* Altura específica para móvil */
+            height: calc(100vh - 0px);
+          }
+          
+          /* Barra de navegación en móvil */
+          .reader-navigation-bar {
+            position: fixed !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            /* Asegurar que esté por encima */
+            z-index: 100 !important;
+          }
+          
+          /* Evitar que el contenido se mueva con el header */
+          .reader-main-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+          }
+          
+          /* Padding mejorado para móviles */
+          .reader-content-inner {
+            padding-top: 8.5rem !important; /* Espacio arriba para header y navegación */
+            padding-bottom: 4.5rem !important; /* Espacio abajo para la barra de controles más alta */
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+          }
+        }
+        
+        /* Para dispositivos muy pequeños */
+        @media screen and (max-width: 480px) and (max-height: 800px) {
+          .reader-content-inner {
+            padding-top: 7.5rem !important; /* También más padding en pantallas pequeñas */
+            padding-bottom: 3rem !important; /* Reducido para pantallas pequeñas */
+          }
+        }
+        
+        /* Scroll suave en todos los dispositivos */
+        .reader-content-area {
+          scroll-behavior: smooth;
+          scrollbar-width: thin;
+        }
+        
+        /* Desktop: ajustes para desktop */
+        @media screen and (min-width: 768px) {
+          .reader-content-inner {
+            padding-top: 8.5rem !important;
+            padding-bottom: 4rem !important;
+          }
+        }
+
         /* Ajuste para el modo pantalla completa */
         .reader-fullscreen .reader-controls {
           bottom: 0 !important;
@@ -1912,80 +2605,41 @@ const Reader: React.FC<ReaderProps> = ({ onFullScreenChange }) => {
           animation: pulse-slow 2.2s infinite ease-in-out;
         }
       `}</style>
+
+      {/* OCR Progress Popup específicamente para Reader */}
+      {isProcessingBackground && (
+        <OCRProgressPopup
+          progress={ocrProgress}
+          total={ocrTotal}
+          onCancel={cancelOCR}
+          isCancelling={isCancelling}
+        />
+      )}
+
+      {/* Translation Progress Popup - Moved to App.tsx as global popup */}
     </div>
   );
 };
 
 const PageLoadingIndicator: React.FC<{ languageName: string }> = ({ languageName }) => (
   <div className="flex flex-col items-center justify-center min-h-[calc(100vh-250px)] text-center p-4">
-    <div className="flex items-center justify-center space-x-3 mb-5">
-      <img
-        src="/img/icono_lexingo.png" // Asegúrate que esta ruta es correcta
-        alt="Lexingo AI"
-        className="w-10 h-10" // Icono más pequeño
-      />
-      <Loader2 className="h-8 w-8 animate-spin text-purple-600 dark:text-purple-400" />
-    </div>
-    <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300">
-      Lexingo AI está traduciendo a {languageName}...
-    </h2>
-    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-      Un momento, por favor.
-    </p>
+    <MinimalLoadingIndicator 
+      message="Traduciendo"
+      size="large"
+      showMessage={true}
+    />
   </div>
 );
 
 // Componente de carga para cuando el libro está vacío o procesándose
 const BookLoadingIndicator: React.FC = () => {
-  // Añadir las nuevas animaciones en el estilo CSS
-  useEffect(() => {
-    document.head.insertAdjacentHTML(
-      'beforeend',
-      `<style>
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .simple-spin {
-          animation: spin 1.5s linear infinite;
-        }
-      </style>`
-    );
-    
-    return () => {
-      // Este código limpiaría los estilos al desmontar
-    };
-  }, []);
-
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-250px)] text-center p-4">
-      <div className="mb-6 relative">
-        {/* Logo Lexingo con spinner simple */}
-        <div className="relative flex items-center justify-center">
-          <img
-            src="/img/icono_lexingo.png"
-            alt="Lexingo AI"
-            className="w-16 h-16 z-10"
-          />
-          <div className="absolute inset-0 border-2 border-transparent border-t-purple-500 border-r-blue-500 rounded-full simple-spin" style={{ width: '68px', height: '68px' }}></div>
-        </div>
-      </div>
-      
-      {/* Texto simple */}
-      <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-3">
-        Lexingo AI está procesando el documento
-      </h2>
-      
-      {/* Indicador de carga simple */}
-      <div className="flex items-center justify-center space-x-2 mb-5">
-        <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse"></div>
-        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-        <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-      </div>
-      
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-        Preparando tu experiencia de lectura con tecnología de IA
-      </p>
+      <MinimalLoadingIndicator 
+        message="Procesando"
+        size="large"
+        showMessage={true}
+      />
     </div>
   );
 };

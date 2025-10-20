@@ -4,6 +4,7 @@ import { Book, ChevronLeft, ChevronRight, Clock, Award, BookOpen, Globe, Bookmar
 import { supabase } from '../lib/supabase';
 import { useBookContext } from '../context/BookContext';
 import * as pdfjsLib from 'pdfjs-dist';
+import BookCover from './BookCover';
 
 // Inicializar PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -281,6 +282,23 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Función para calcular tiempo transcurrido desde la última lectura
+  const getTimeAgo = (lastRead: string) => {
+    const now = new Date();
+    const lastReadDate = new Date(lastRead);
+    const diffInMs = now.getTime() - lastReadDate.getTime();
+    
+    const minutes = Math.floor(diffInMs / (1000 * 60));
+    const hours = Math.floor(diffInMs / (1000 * 60 * 60));
+    const days = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+    
+    if (minutes < 1) return 'hace un momento';
+    if (minutes < 60) return `hace ${minutes} min`;
+    if (hours < 24) return `hace ${hours}h`;
+    if (days < 7) return `hace ${days}d`;
+    return lastReadDate.toLocaleDateString();
   };
 
   // Cerrar sesión
@@ -565,8 +583,9 @@ export default function HomePage() {
                     onClick={() => handleOpenBook(book)}
                   >
                     <div className="aspect-[3/4] relative">
-                      <img 
+                      <BookCover
                         src={book.cover_url || '/img/books/default-cover.jpg'}
+                        title={book.title}
                         alt={book.title}
                         className="w-full h-full object-cover"
                       />
@@ -576,7 +595,7 @@ export default function HomePage() {
                           <div className="flex items-center text-sm opacity-90 mb-2">
                             <Clock className="w-4 h-4 mr-1" />
                             <span>
-                              {new Date(book.last_read).toLocaleDateString()}
+                              {getTimeAgo(book.last_read)}
                             </span>
                           </div>
                           <div className="w-full bg-gray-200/30 rounded-full h-2">
@@ -644,8 +663,9 @@ export default function HomePage() {
                   onClick={() => handleOpenCommunityBook(book)}
                 >
                   <div className="aspect-[3/4] relative">
-                    <img
+                    <BookCover
                       src={book.cover}
+                      title={book.title}
                       alt={book.title}
                       className="w-full h-full object-cover"
                     />
@@ -1344,8 +1364,9 @@ export default function HomePage() {
                 onClick={() => handleOpenCommunityBook(book)}
               >
                   <div className="relative aspect-[2/3]">
-                  <img
+                  <BookCover
                     src={book.cover}
+                    title={book.title}
                     alt={book.title}
                       className="w-full h-full object-cover"
                   />

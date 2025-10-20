@@ -1,12 +1,53 @@
 [build]
-  functions = "netlify/functions"
+  # Disable Netlify Functions bundling; we use Supabase Edge Functions in prod
+  functions = "netlify/functions-disabled"
+  publish = "dist"
+  command = "npm run build"
 
 [functions]
   node_bundler = "esbuild"
+
+## Functions environment sections removed to avoid injecting large env into AWS Lambda
+
+
+# Redirect all routes to index.html for SPA (Single Page Application)
+[[redirects]]
+  from = "/eula"
+  to = "/eula/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+# Explicit SPA redirects for legal pages
+[[redirects]]
+  from = "/privacy"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/term"
+  to = "/index.html"
+  status = 200
 
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "Content-Type"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS" 
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+
+# Headers for static assets
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Headers for the index.html file
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate" 

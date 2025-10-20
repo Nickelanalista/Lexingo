@@ -1,10 +1,64 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Book, Home, Library, BookOpen, User, Settings, LogOut } from 'lucide-react';
+import { Book, Home, Library, BookOpen, User, Settings, LogOut, Plus } from 'lucide-react';
 import { useBookContext } from '../context/BookContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { Link, useLocation } from 'react-router-dom';
 import { AVATAR_UPDATED_EVENT } from '../pages/ProfilePage';
+
+// Cache para el avatar del usuario
+const AVATAR_CACHE_KEY = 'user_avatar_cache';
+const AVATAR_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+interface AvatarCache {
+  url: string;
+  timestamp: number;
+  userId: string;
+}
+
+// Funciones para manejar el caché del avatar
+const saveAvatarToCache = (url: string, userId: string) => {
+  try {
+    const cacheData: AvatarCache = {
+      url,
+      timestamp: Date.now(),
+      userId
+    };
+    localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(cacheData));
+  } catch (error) {
+    console.warn('Error guardando avatar en caché:', error);
+  }
+};
+
+const getAvatarFromCache = (userId: string): string | null => {
+  try {
+    const cached = localStorage.getItem(AVATAR_CACHE_KEY);
+    if (!cached) return null;
+    
+    const cacheData: AvatarCache = JSON.parse(cached);
+    const now = Date.now();
+    
+    // Verificar si es del mismo usuario y no ha expirado
+    if (cacheData.userId === userId && (now - cacheData.timestamp) < AVATAR_CACHE_DURATION) {
+      return cacheData.url;
+    }
+    
+    // Cache expirado o de otro usuario
+    localStorage.removeItem(AVATAR_CACHE_KEY);
+    return null;
+  } catch (error) {
+    console.warn('Error leyendo avatar del caché:', error);
+    return null;
+  }
+};
+
+const clearAvatarCache = () => {
+  try {
+    localStorage.removeItem(AVATAR_CACHE_KEY);
+  } catch (error) {
+    console.warn('Error limpiando caché de avatar:', error);
+  }
+};
 
 const NavigationBar: React.FC = () => {
   const { book } = useBookContext();
@@ -26,10 +80,11 @@ const NavigationBar: React.FC = () => {
       }
     };
 
-    // Listener para actualización de avatar
+    // Listener para actualización de avatar - limpiar caché y recargar
     const handleAvatarUpdate = (event: CustomEvent) => {
-      console.log('Evento de actualización de avatar recibido en NavigationBar', event.detail);
       if (event.detail && event.detail.avatarUrl) {
+        // Limpiar caché y establecer nuevo avatar
+        clearAvatarCache();
         setAvatarUrl(event.detail.avatarUrl);
         // Actualizar el perfil después de un breve retraso
         setTimeout(() => getProfile(), 500);
@@ -39,17 +94,9 @@ const NavigationBar: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     window.addEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdate as EventListener);
     
-    // Configurar un intervalo para refrescar el avatar periódicamente
-    const refreshInterval = setInterval(() => {
-      if (location.pathname !== '/profile') {  // No refrescar en la página de perfil
-        getProfile();
-      }
-    }, 30000); // Cada 30 segundos
-    
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdate as EventListener);
-      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -63,7 +110,11 @@ const NavigationBar: React.FC = () => {
         return;
       }
 
-      console.log('Obteniendo perfil del usuario en NavigationBar');
+      // Verificar caché primero
+      const cachedAvatar = getAvatarFromCache(user.id);
+      if (cachedAvatar) {
+        setAvatarUrl(cachedAvatar);
+      }
 
       const { data, error } = await supabase
         .from('profiles')
@@ -76,7 +127,7 @@ const NavigationBar: React.FC = () => {
         return;
       }
 
-      console.log('Datos del perfil obtenidos:', data);
+      // Datos del perfil obtenidos
 
       // If no profile exists, create one
       if (!data) {
@@ -101,15 +152,21 @@ const NavigationBar: React.FC = () => {
       } else {
         setProfile(data);
         
-        // Si hay una URL de avatar, añadir timestamp para evitar caché
+        // Manejar avatar con caché inteligente
         if (data.avatar_url) {
-          const timestamp = new Date().getTime();
-          const cachedUrl = `${data.avatar_url}?t=${timestamp}`;
-          console.log('URL de avatar con prevención de caché:', cachedUrl);
-          setAvatarUrl(cachedUrl);
+          // Solo recargar avatar si no está en caché o si ha cambiado
+          if (!cachedAvatar || !cachedAvatar.includes(data.avatar_url.split('?')[0])) {
+            const timestamp = new Date().getTime();
+            const newAvatarUrl = `${data.avatar_url}?t=${timestamp}`;
+            setAvatarUrl(newAvatarUrl);
+            // Guardar en caché
+            saveAvatarToCache(newAvatarUrl, user.id);
+          }
         } else {
-          console.log('No hay URL de avatar disponible');
+          // No hay avatar disponible
           setAvatarUrl(null);
+          // Limpiar caché si no hay avatar
+          clearAvatarCache();
         }
       }
     } catch (error) {
@@ -125,6 +182,8 @@ const NavigationBar: React.FC = () => {
       if (error) throw error;
       setProfile(null);
       setAvatarUrl(null);
+      // Limpiar caché de avatar al cerrar sesión
+      clearAvatarCache();
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -148,17 +207,16 @@ const NavigationBar: React.FC = () => {
 
   // Function to handle avatar load error
   const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    console.error('Error loading avatar in navbar');
-    console.log('URL que causó el error:', e.currentTarget.src);
+    // Limpiar caché de avatar problemático
+    clearAvatarCache();
     
-    // Intentar recargar la imagen con un nuevo timestamp
-    if (profile?.avatar_url) {
+    // Intentar recargar la imagen con un nuevo timestamp una vez
+    if (profile?.avatar_url && !e.currentTarget.src.includes('retry=1')) {
       const newTimestamp = new Date().getTime();
-      const newUrl = `${profile.avatar_url}?t=${newTimestamp}`;
-      console.log('Intentando recargar con nueva URL:', newUrl);
+      const newUrl = `${profile.avatar_url}?t=${newTimestamp}&retry=1`;
       setAvatarUrl(newUrl);
     } else {
-      // Si no hay avatar, mostrar iniciales
+      // Si falla después del retry, mostrar iniciales
       setAvatarUrl(null);
     }
   };
@@ -171,92 +229,60 @@ const NavigationBar: React.FC = () => {
     );
   };
 
+  // Agregar estilos para la línea brillante
+  React.useEffect(() => {
+    const styleId = 'header-divider-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        @keyframes shimmerLine {
+          0% {
+            background-position: -300% 50%;
+          }
+          100% {
+            background-position: 300% 50%;
+          }
+        }
+        
+        .header-divider {
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 30%,
+            rgba(147, 51, 234, 0.1) 40%,
+            rgba(147, 51, 234, 0.3) 45%,
+            rgba(147, 51, 234, 0.6) 48%,
+            rgba(147, 51, 234, 0.8) 50%,
+            rgba(147, 51, 234, 0.6) 52%,
+            rgba(147, 51, 234, 0.3) 55%,
+            rgba(147, 51, 234, 0.1) 60%,
+            transparent 70%,
+            transparent 100%
+          );
+          background-size: 600% 100%;
+          animation: shimmerLine 20s linear infinite;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   return (
-    <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-center h-16 items-center">
-          {/* Contenedor principal con flex centrado */}
-          <div className="flex-1 flex items-center justify-between max-w-5xl">
-            {/* Logo en web */}
-            <div className="hidden md:flex items-center">
+    <>
+      {/* Header simple con logo y perfil para desktop y móvil */}
+      <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50">
+          <div className="flex items-center justify-between h-16 px-4">
+            {/* Logo - centrado */}
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center">
               <Link to="/" className="flex items-center">
                 <img src={logoSrc} alt="Lexingo" className="h-11 hover:opacity-80 transition-opacity" />
               </Link>
             </div>
 
-            {/* Navegación desktop - centrada */}
-            <nav className="hidden md:flex items-center space-x-4">
-              <Link
-                to="/"
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive('/') 
-                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20' 
-                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-                }`}
-              >
-                <Home size={18} />
-                <span>Inicio</span>
-              </Link>
-              
-              <Link
-                to="/books"
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive('/books')
-                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-                }`}
-              >
-                <Library size={18} />
-                <span>Mis Libros</span>
-              </Link>
-              
-              <Link
-                to="/reader"
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive('/reader')
-                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-                }`}
-              >
-                <BookOpen size={18} />
-                <span>Lectura</span>
-              </Link>
-              
-              <Link
-                to="/profile"
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive('/profile')
-                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-                }`}
-              >
-                <User size={18} />
-                <span>Mi Cuenta</span>
-              </Link>
-              
-              <Link
-                to="/settings"
-                className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive('/settings')
-                    ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400'
-                }`}
-              >
-                <Settings size={18} />
-                <span>Configuración</span>
-              </Link>
-            </nav>
-
-            {/* Logo centrado solo en móvil */}
-            <div className="md:hidden flex items-center justify-center">
-              <Link to="/" className="flex items-center">
-                <img src={logoSrc} alt="Lexingo" className="h-11 hover:opacity-80 transition-opacity" />
-              </Link>
-            </div>
-
-            {/* Perfil de usuario */}
-            <div className="flex items-center" ref={dropdownRef}>
-              <div className="relative">
+            {/* Perfil de usuario - siempre a la derecha */}
+            <div className="ml-auto flex items-center relative z-[999999]" ref={dropdownRef}>
+              <div className="relative z-50">
                 <button 
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="focus:outline-none"
@@ -279,24 +305,25 @@ const NavigationBar: React.FC = () => {
                 
                 {/* Dropdown Menu */}
                 {dropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl rounded-2xl shadow-2xl py-2 z-[99999] border border-white/20 dark:border-gray-700/30" style={{ zIndex: 99999 }}>
                     <Link 
                       to="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      className="block px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 rounded-xl mx-2 flex items-center transition-all duration-200"
                       onClick={() => {
                         setDropdownOpen(false);
-                        // Forzar actualización del perfil al ir a la página de perfil
-                        setTimeout(() => getProfile(), 500);
+                        if (!getAvatarFromCache(profile?.id)) {
+                          setTimeout(() => getProfile(), 500);
+                        }
                       }}
                     >
-                      <User size={16} className="mr-2" />
+                      <User size={16} className="mr-3" />
                       Mi Perfil
                     </Link>
                     <button
                       onClick={handleSignOut}
-                      className="w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      className="w-full px-4 py-3 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 rounded-xl mx-2 flex items-center transition-all duration-200"
                     >
-                      <LogOut size={16} className="mr-2" />
+                      <LogOut size={16} className="mr-3" />
                       Cerrar sesión
                     </button>
                   </div>
@@ -304,9 +331,95 @@ const NavigationBar: React.FC = () => {
               </div>
             </div>
           </div>
+          
+          {/* Línea divisoria morada con efecto brillante */}
+          <div className="header-divider h-0.5 w-full"></div>
+      </header>
+
+      {/* Navegación glassmorphism flotante para desktop */}
+      <div className="hidden md:block fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[200]">
+        <div className="bg-white/10 dark:bg-gray-900/20 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-3xl shadow-2xl shadow-black/20">
+          <nav className="flex items-center px-6 py-3 space-x-2">
+            <Link
+              to="/"
+              className={`flex flex-col items-center py-3 px-5 rounded-2xl transition-all duration-300 transform hover:scale-105 ${
+                isActive('/') 
+                  ? 'text-purple-400 bg-purple-500/10 shadow-md' 
+                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-400 hover:bg-white/5'
+              }`}
+            >
+              <Home className={`h-5 w-5 transition-all duration-300 ${isActive('/') ? 'drop-shadow-md' : ''}`} />
+              <span className={`text-xs mt-1 font-medium transition-all duration-300 ${isActive('/') ? 'drop-shadow-sm' : ''}`}>
+                Inicio
+              </span>
+              {isActive('/') && (
+                <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full shadow-md" />
+              )}
+            </Link>
+            
+            <Link
+              to="/books"
+              className={`flex flex-col items-center py-3 px-5 rounded-2xl transition-all duration-300 transform hover:scale-105 ${
+                isActive('/books')
+                  ? 'text-purple-400 bg-purple-500/10 shadow-md'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-400 hover:bg-white/5'
+              }`}
+            >
+              <Library className={`h-5 w-5 transition-all duration-300 ${isActive('/books') ? 'drop-shadow-md' : ''}`} />
+              <span className={`text-xs mt-1 font-medium transition-all duration-300 ${isActive('/books') ? 'drop-shadow-sm' : ''}`}>
+                Libros
+              </span>
+              {isActive('/books') && (
+                <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full shadow-md" />
+              )}
+            </Link>
+
+            <Link
+              to="/upload"
+              className="flex flex-col items-center justify-center bg-gradient-to-tr from-purple-500 via-pink-500 to-indigo-500 p-4 rounded-2xl shadow-lg transform transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-purple-500/25 mx-2"
+            >
+              <Plus className="h-6 w-6 text-white drop-shadow-md" />
+              <span className="sr-only">Cargar</span>
+            </Link>
+            
+            <Link
+              to="/profile"
+              className={`flex flex-col items-center py-3 px-5 rounded-2xl transition-all duration-300 transform hover:scale-105 ${
+                isActive('/profile')
+                  ? 'text-purple-400 bg-purple-500/10 shadow-md'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-400 hover:bg-white/5'
+              }`}
+            >
+              <User className={`h-5 w-5 transition-all duration-300 ${isActive('/profile') ? 'drop-shadow-md' : ''}`} />
+              <span className={`text-xs mt-1 font-medium transition-all duration-300 ${isActive('/profile') ? 'drop-shadow-sm' : ''}`}>
+                Cuenta
+              </span>
+              {isActive('/profile') && (
+                <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full shadow-md" />
+              )}
+            </Link>
+            
+            <Link
+              to="/settings"
+              className={`flex flex-col items-center py-3 px-5 rounded-2xl transition-all duration-300 transform hover:scale-105 ${
+                isActive('/settings')
+                  ? 'text-purple-400 bg-purple-500/10 shadow-md'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-400 hover:bg-white/5'
+              }`}
+            >
+              <Settings className={`h-5 w-5 transition-all duration-300 ${isActive('/settings') ? 'drop-shadow-md' : ''}`} />
+              <span className={`text-xs mt-1 font-medium transition-all duration-300 ${isActive('/settings') ? 'drop-shadow-sm' : ''}`}>
+                Ajustes
+              </span>
+              {isActive('/settings') && (
+                <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full shadow-md" />
+              )}
+            </Link>
+          </nav>
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/5 via-pink-600/5 to-indigo-600/5 rounded-3xl pointer-events-none" />
         </div>
       </div>
-    </header>
+    </>
   );
 };
 

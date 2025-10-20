@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Camera, Eye, EyeOff, Loader2, Key, RefreshCw, LogOut, AlertTriangle } from 'lucide-react';
+import { ImageOptimizationService } from '../services/imageOptimizationService';
+import { User, Mail, Camera, Eye, EyeOff, Loader2, Key, RefreshCw, LogOut, AlertTriangle, FileImage } from 'lucide-react';
 
 // Evento personalizado para notificar actualización de avatar
 export const AVATAR_UPDATED_EVENT = 'AVATAR_UPDATED';
@@ -24,6 +25,7 @@ export default function ProfilePage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [imageOptimizationInfo, setImageOptimizationInfo] = useState(null);
 
   useEffect(() => {
     getProfile();
@@ -76,30 +78,50 @@ export default function ProfilePage() {
   const handleAvatarChange = async (e) => {
     try {
       setError(null);
+      setSuccess(null);
+      setImageOptimizationInfo(null);
+      
       const file = e.target.files[0];
       if (!file) return;
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        throw new Error('La imagen no debe superar 5MB');
-      }
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        throw new Error('Por favor selecciona una imagen');
+      // Validar archivo usando el servicio
+      const validation = ImageOptimizationService.validateImageFile(file);
+      if (!validation.valid) {
+        throw new Error(validation.error);
       }
 
       setUploadingAvatar(true);
+
+      // Optimizar imagen
+      console.log('Optimizando imagen...');
+      const { optimizedFile, originalSize, optimizedSize } = await ImageOptimizationService.optimizeImage(file, {
+        maxWidth: 256,
+        maxHeight: 256,
+        quality: 0.85,
+        format: 'webp',
+        maxSizeKB: 50
+      });
+
+      // Guardar información de la optimización
+      const reductionPercentage = ImageOptimizationService.calculateReduction(originalSize, optimizedSize);
+      setImageOptimizationInfo({
+        originalSize: ImageOptimizationService.formatFileSize(originalSize),
+        optimizedSize: ImageOptimizationService.formatFileSize(optimizedSize),
+        reduction: reductionPercentage
+      });
+
+      console.log(`Imagen optimizada: ${ImageOptimizationService.formatFileSize(originalSize)} → ${ImageOptimizationService.formatFileSize(optimizedSize)} (${reductionPercentage}% reducción)`);
       
       // Realizar la carga directamente al cambiar el archivo
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
       
-      const fileExt = file.name.split('.').pop();
+      // Usar la extensión del archivo optimizado (webp)
+      const fileExt = optimizedFile.name.split('.').pop();
       // Modificamos el formato del nombre para que cumpla con la política RLS
       // Primero ponemos el ID del usuario, seguido de una barra y luego el resto del nombre
       // La política espera: user_id/cualquier_cosa.ext
-      const fileName = `${user.id}/${Date.now()}_avatar.${fileExt}`;
+      const fileName = `${user.id}/${Date.now()}_avatar_optimized.${fileExt}`;
       
       // Delete old avatar if exists
       if (profile?.avatar_url) {
@@ -132,9 +154,9 @@ export default function ProfilePage() {
       try {
         const { error: uploadError, data } = await supabase.storage
           .from('avatars')
-          .upload(fileName, file, { 
+          .upload(fileName, optimizedFile, { 
             upsert: true,
-            contentType: file.type
+            contentType: optimizedFile.type
           });
 
         if (uploadError) {
@@ -173,9 +195,9 @@ export default function ProfilePage() {
         console.log('Perfil actualizado con nueva URL de avatar');
         
         // Actualizar la UI
-        setAvatar(file);
+        setAvatar(optimizedFile);
         setAvatarUrl(urlWithTimestamp);
-        setSuccess('Foto de perfil actualizada correctamente');
+        setSuccess(`Foto de perfil actualizada y optimizada correctamente (${reductionPercentage}% más pequeña)`);
         
         // Emitir evento personalizado para notificar a otros componentes
         const avatarUpdateEvent = new CustomEvent(AVATAR_UPDATED_EVENT, { 
@@ -360,8 +382,17 @@ export default function ProfilePage() {
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Foto de perfil</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                JPG o PNG. Máximo 5MB.
+                JPG, PNG, WebP o GIF. Máximo 20MB. Se optimizará automáticamente.
               </p>
+              {imageOptimizationInfo && (
+                <div className="mt-2 flex items-center space-x-2">
+                  <FileImage size={16} className="text-green-500" />
+                  <span className="text-xs text-green-600 dark:text-green-400">
+                    Optimizada: {imageOptimizationInfo.originalSize} → {imageOptimizationInfo.optimizedSize} 
+                    ({imageOptimizationInfo.reduction}% reducción)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
